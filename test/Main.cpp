@@ -1,4 +1,4 @@
-#include <iostream>
+﻿#include <iostream>
 #include <string>
 #include <vector>
 #include <fstream>
@@ -8,13 +8,10 @@
 #include <conio.h>
 #include <direct.h>
 
-#define NOMINMAX
-#include <windows.h>
-
 #include "GameAPI.h"
 #include "MenuFacade.h"
 #include "MenuText.h"
-// hihi
+
 using namespace std;
 using namespace caro;
 
@@ -64,65 +61,17 @@ namespace {
         return ch;
     }
 
-    HANDLE GetConsoleHandle() {
-        return GetStdHandle(STD_OUTPUT_HANDLE);
+    void ClearScreen() {
+        system("cls");
     }
 
-    void MoveConsoleCursorToHome() {
-        COORD home;
-        home.X = 0;
-        home.Y = 0;
-        SetConsoleCursorPosition(GetConsoleHandle(), home);
-    }
-
-    void ClearConsoleBuffer() {
-        HANDLE handle = GetConsoleHandle();
-        CONSOLE_SCREEN_BUFFER_INFO info;
-        GetConsoleScreenBufferInfo(handle, &info);
-
-        DWORD cellCount = (DWORD)(info.dwSize.X * info.dwSize.Y);
-        DWORD written = 0;
-        COORD home;
-        home.X = 0;
-        home.Y = 0;
-
-        FillConsoleOutputCharacterA(handle, ' ', cellCount, home, &written);
-        FillConsoleOutputAttribute(handle, info.wAttributes, cellCount, home, &written);
-        SetConsoleCursorPosition(handle, home);
-    }
-
-    void HideConsoleCursor() {
-        HANDLE handle = GetConsoleHandle();
-        CONSOLE_CURSOR_INFO cursorInfo;
-        cursorInfo.dwSize = 1;
-        cursorInfo.bVisible = FALSE;
-        SetConsoleCursorInfo(handle, &cursorInfo);
-    }
-
-    void PresentScreenBuffer(const string& buffer) {
-        ClearConsoleBuffer();
-        MoveConsoleCursorToHome();
-        cout << buffer;
-        cout.flush();
-    }
-
-    string PromptLine(
-        Language language,
-        const string& vietnameseTitle,
-        const string& englishTitle,
-        const string& vietnamesePrompt,
-        const string& englishPrompt,
-        const string& defaultValue
-    ) {
-        ClearConsoleBuffer();
-
-        cout << SelectText(language, vietnameseTitle, englishTitle) << "\n\n";
-        cout << SelectText(language, vietnamesePrompt, englishPrompt);
-
+    string PromptLine(const string& title, const string& prompt, const string& defaultValue) {
+        ClearScreen();
+        cout << title << "\n\n";
+        cout << prompt;
         if (!defaultValue.empty()) {
             cout << " [" << defaultValue << "]";
         }
-
         cout << "\n> ";
 
         string line;
@@ -132,21 +81,26 @@ namespace {
         return line;
     }
 
-    bool PromptYesNo(
-        Language language,
-        const string& vietnameseTitle,
-        const string& englishTitle,
-        const string& vietnameseQuestion,
-        const string& englishQuestion
-    ) {
-        ClearConsoleBuffer();
-
-        cout << SelectText(language, vietnameseTitle, englishTitle) << "\n\n";
-        cout << SelectText(language, vietnameseQuestion, englishQuestion) << "\n";
-        cout << SelectText(language, "Nhan Y de dong y, phim bat ky de huy.\n", "Press Y to confirm, any other key to cancel.\n");
+    bool PromptYesNo(const string& title, const string& question) {
+        ClearScreen();
+        cout << title << "\n\n";
+        cout << question << "\n";
+        cout << "Nhan Y de dong y, phim bat ky de huy.\n";
 
         int key = ReadKeyUpper();
         return key == 'Y';
+    }
+
+    std::string GetDefaultPlayer1Name() {
+        return "Player 1";
+    }
+
+    std::string GetDefaultPlayer2Name() {
+        return "Player 2";
+    }
+
+    std::string GetBotName(AIDifficulty difficulty) {
+        return "BOT - " + GetDisplayText(difficulty);
     }
 
     char CellToChar(CellState cell) {
@@ -155,8 +109,13 @@ namespace {
         return '.';
     }
 
-    string ResultToText(GameResult result, Language language) {
-        return GetDisplayText(result, language);
+    string ResultToText(GameResult result) {
+        switch (result) {
+        case GameResult::XWin: return "X wins";
+        case GameResult::OWin: return "O wins";
+        case GameResult::Draw: return "Draw";
+        default: return "In Progress";
+        }
     }
 
     string GetWinnerDisplayName(const GameSession& game) {
@@ -202,70 +161,70 @@ namespace {
         return FindFirstEmptyCell(game);
     }
 
-    void AppendBoardToStream(ostringstream& oss, const GameSession& game, const Position& cursor) {
+    void PrintBoardWithCursor(const GameSession& game, const Position& cursor) {
         int n = GetBoardSize(game);
 
-        oss << "     ";
+        cout << "     ";
         for (int c = 0; c < n; ++c) {
-            oss << setw(3) << c;
+            cout << setw(3) << c;
         }
-        oss << "\n";
+        cout << "\n";
 
         for (int r = 0; r < n; ++r) {
-            oss << setw(3) << r << "  ";
+            cout << setw(3) << r << "  ";
             for (int c = 0; c < n; ++c) {
                 char ch = CellToChar(GetCell(game, Position(r, c)));
 
                 if (r == cursor.row && c == cursor.col) {
-                    oss << "[" << ch << "]";
+                    cout << "[" << ch << "]";
                 }
                 else {
-                    oss << " " << ch << " ";
+                    cout << " " << ch << " ";
                 }
             }
-            oss << "\n";
+            cout << "\n";
         }
     }
 
-    string BuildGameScreenBuffer(const GameSession& game, const Position& cursor, const string& message) {
-        const Language lang = game.settings.language;
-
-        ostringstream oss;
-        oss << "=========== " << SelectText(lang, "CARO CONSOLE", "CARO CONSOLE") << " ===========\n\n";
-        oss << left;
-        oss << setw(12) << SelectText(lang, "Che do", "Mode") << ": " << GetDisplayText(game.settings.gameMode, lang) << "\n";
-        oss << setw(12) << SelectText(lang, "Luat", "Rule") << ": " << GetDisplayText(game.settings.ruleMode, lang) << "\n";
-        oss << setw(12) << "Player X" << ": " << game.playerX.name << "\n";
-        oss << setw(12) << "Player O" << ": " << game.playerO.name << "\n";
-        oss << setw(12) << SelectText(lang, "Luot", "Turn") << ": " << ToString(game.currentTurn) << "\n";
-        oss << setw(12) << SelectText(lang, "Ket qua", "Result") << ": " << ResultToText(game.result, lang) << "\n";
-        oss << setw(12) << SelectText(lang, "So nuoc", "Moves") << ": " << game.moveCount << "\n";
-        oss << setw(12) << SelectText(lang, "Am thanh", "Sound") << ": " << FormatOnOff(game.settings.soundEnabled, lang) << " (" << game.settings.soundVolume << "%)\n";
-        oss << setw(12) << SelectText(lang, "Nhac", "Music") << ": " << FormatOnOff(game.settings.musicEnabled, lang) << " (" << game.settings.musicVolume << "%)\n";
-        oss << setw(12) << SelectText(lang, "Ngon ngu", "Language") << ": " << GetDisplayText(game.settings.language, lang) << "\n";
+    void PrintGameHeader(const GameSession& game, const string& message) {
+        cout << "=========== CARO CONSOLE ===========\n\n";
+        cout << "Mode      : " << ToString(game.settings.gameMode) << "\n";
+        cout << "Rule      : " << ToString(game.settings.ruleMode) << "\n";
+        cout << "Player X  : " << game.playerX.name << "\n";
+        cout << "Player O  : " << game.playerO.name << "\n";
+        cout << "Turn      : " << ToString(game.currentTurn) << "\n";
+        cout << "Result    : " << ResultToText(game.result) << "\n";
+        cout << "Moves     : " << game.moveCount << "\n";
+        cout << "Sound     : " << (game.settings.soundEnabled ? "ON" : "OFF")
+            << " (" << game.settings.soundVolume << "%)\n";
+        cout << "Music     : " << (game.settings.musicEnabled ? "ON" : "OFF")
+            << " (" << game.settings.musicVolume << "%)\n";
+        cout << "Language  : " << ToString(game.settings.language) << "\n";
 
         if (!game.currentSaveName.empty()) {
-            oss << setw(12) << SelectText(lang, "Ten save", "Save name") << ": " << game.currentSaveName << "\n";
+            cout << "Save name : " << game.currentSaveName << "\n";
         }
 
         if (!message.empty()) {
-            oss << setw(12) << SelectText(lang, "Thong bao", "Message") << ": " << message << "\n";
+            cout << "Message   : " << message << "\n";
         }
 
-        oss << "\n";
-        AppendBoardToStream(oss, game, cursor);
+        cout << "\n";
+    }
 
-        oss << "\n===== " << SelectText(lang, "DIEU KHIEN", "CONTROLS") << " =====\n";
-        oss << "W/A/S/D : " << SelectText(lang, "Di chuyen", "Move") << "\n";
-        oss << "Enter   : " << SelectText(lang, "Dat co / xac nhan", "Place piece / confirm") << "\n";
-        oss << "P / ESC : " << SelectText(lang, "Mo menu tam dung", "Open pause menu") << "\n";
-        oss << SelectText(lang, "Trong menu: W/S de chon, A/D de doi gia tri, Enter de xac nhan", "In menu: W/S to move, A/D to change value, Enter to confirm") << "\n";
-
-        return oss.str();
+    void PrintControls() {
+        cout << "\n===== CONTROLS =====\n";
+        cout << "W/A/S/D : Move\n";
+        cout << "Enter   : Place piece / confirm\n";
+        cout << "P / ESC : Pause menu\n";
+        cout << "In menu : W/S move, A/D change, Enter confirm\n";
     }
 
     void DrawGameScreen(const GameSession& game, const Position& cursor, const string& message) {
-        PresentScreenBuffer(BuildGameScreenBuffer(game, cursor, message));
+        ClearScreen();
+        PrintGameHeader(game, message);
+        PrintBoardWithCursor(game, cursor);
+        PrintControls();
     }
 
     string BuildAutoSaveName(const GameSession& game, int slot) {
@@ -307,49 +266,43 @@ namespace {
         return MenuInput::None;
     }
 
-    void AppendSingleMenuItem(ostringstream& oss, const MenuItemView& item) {
+    void PrintSingleMenuItem(const MenuItemView& item) {
         string prefix = item.selected ? " > " : "   ";
         string disabled = item.enabled ? "" : "[Locked] ";
 
-        oss << prefix << disabled << item.label;
+        cout << prefix << disabled << item.label;
 
         if (!item.value.empty() && item.kind != MenuItemKind::SaveSlot) {
-            oss << " : " << item.value;
+            cout << " : " << item.value;
         }
 
-        oss << "\n";
+        cout << "\n";
 
         if (item.selected && !item.hint.empty()) {
-            oss << "     " << item.hint << "\n";
+            cout << "     " << item.hint << "\n";
         }
-    }
-
-    string BuildMenuScreenBuffer(const MenuView& view) {
-        ostringstream oss;
-
-        oss << "=========== " << view.title << " ===========\n\n";
-
-        if (!view.subtitle.empty()) {
-            oss << view.subtitle << "\n\n";
-        }
-
-        for (size_t i = 0; i < view.items.size(); ++i) {
-            AppendSingleMenuItem(oss, view.items[i]);
-        }
-
-        if (!view.message.empty()) {
-            oss << "\n" << view.message << "\n";
-        }
-
-        if (!view.footerHint.empty()) {
-            oss << "\n" << view.footerHint << "\n";
-        }
-
-        return oss.str();
     }
 
     void DrawMenuView(const MenuView& view) {
-        PresentScreenBuffer(BuildMenuScreenBuffer(view));
+        ClearScreen();
+
+        cout << "=========== " << view.title << " ===========\n\n";
+
+        if (!view.subtitle.empty()) {
+            cout << view.subtitle << "\n\n";
+        }
+
+        for (size_t i = 0; i < view.items.size(); ++i) {
+            PrintSingleMenuItem(view.items[i]);
+        }
+
+        if (!view.message.empty()) {
+            cout << "\n" << view.message << "\n";
+        }
+
+        if (!view.footerHint.empty()) {
+            cout << "\n" << view.footerHint << "\n";
+        }
     }
 
     void ApplyMenuSettingsToGame(MenuContext& menu, GameSession& game) {
@@ -360,7 +313,7 @@ namespace {
         game.settings.language = menu.appSettings.language;
 
         if (game.settings.gameMode == GameMode::PVE) {
-            game.playerO.name = GetBotDisplayName(game.settings.aiDifficulty, game.settings.language);
+            game.playerO.name = GetBotName(game.settings.aiDifficulty);
         }
     }
 
@@ -368,7 +321,6 @@ namespace {
         menu.appSettings = game.settings;
         SyncNewGameDraftFromAppSettings(menu);
         UpdateMenuSaveNameDraft(menu, BuildSuggestedSaveName(game));
-        UpdateMenuNewGameNames(menu, game.playerX.name, game.playerO.name);
     }
 
     void RefreshMenuContextForCurrentGame(MenuContext& menu, const GameSession& game) {
@@ -386,141 +338,103 @@ namespace {
             : saveName;
 
         if (SaveGameToFile(game, path)) {
-            message = SelectText(
-                game.settings.language,
-                "Luu thanh cong vao slot " + to_string(slotIndex),
-                "Saved successfully to slot " + to_string(slotIndex)
-            );
+            message = "Save successful to slot " + to_string(slotIndex);
             return true;
         }
 
-        message = SelectText(game.settings.language, "Luu that bai", "Save failed");
+        message = "Save failed";
         return false;
     }
 
-    bool LoadGameFromSlot(GameSession& game, int slotIndex, Language currentLanguage, string& message) {
+    bool LoadGameFromSlot(GameSession& game, int slotIndex, string& message) {
         string path = BuildSavePath(slotIndex);
 
         if (!FileExists(path)) {
-            message = SelectText(currentLanguage, "Slot nay dang trong", "This slot is empty");
+            message = "This slot is empty";
             return false;
         }
 
         if (!LoadGameFromFile(game, path)) {
-            message = SelectText(currentLanguage, "Tai that bai", "Load failed");
+            message = "Load failed";
             return false;
         }
 
         game.screen = ScreenState::Playing;
         game.isPaused = false;
-        message = SelectText(game.settings.language, "Tai thanh cong", "Loaded successfully");
+
+        if (game.settings.gameMode == GameMode::PVE) {
+            game.playerO.name = GetBotName(game.settings.aiDifficulty);
+        }
+
+        message = "Load successful";
         return true;
     }
 
-    bool RenameSaveSlotMetadata(int slotIndex, const string& newName, Language language, string& message) {
+    bool RenameSaveSlotMetadata(int slotIndex, const string& newName, string& message) {
         string path = BuildSavePath(slotIndex);
 
         if (!FileExists(path)) {
-            message = SelectText(language, "Slot nay dang trong", "This slot is empty");
+            message = "This slot is empty";
             return false;
         }
 
         GameSession temp;
         if (!LoadGameFromFile(temp, path)) {
-            message = SelectText(language, "Khong doc duoc save de doi ten", "Cannot read save to rename");
+            message = "Cannot read save to rename";
             return false;
         }
 
         temp.currentSaveName = newName.empty() ? ("slot" + to_string(slotIndex)) : newName;
 
         if (!SaveGameToFile(temp, path)) {
-            message = SelectText(language, "Doi ten save that bai", "Rename save failed");
+            message = "Rename save failed";
             return false;
         }
 
-        message = SelectText(
-            language,
-            "Da doi ten save o slot " + to_string(slotIndex),
-            "Renamed save in slot " + to_string(slotIndex)
-        );
+        message = "Renamed save in slot " + to_string(slotIndex);
         return true;
     }
 
-    bool DeleteSaveSlotFile(int slotIndex, Language language, string& message) {
+    bool DeleteSaveSlotFile(int slotIndex, string& message) {
         string path = BuildSavePath(slotIndex);
 
         if (!FileExists(path)) {
-            message = SelectText(language, "Slot nay dang trong", "This slot is empty");
+            message = "This slot is empty";
             return false;
         }
 
         if (!DeleteSaveFile(path)) {
-            message = SelectText(language, "Xoa save that bai", "Delete save failed");
+            message = "Delete save failed";
             return false;
         }
 
-        message = SelectText(
-            language,
-            "Da xoa save o slot " + to_string(slotIndex),
-            "Deleted save in slot " + to_string(slotIndex)
-        );
+        message = "Deleted save in slot " + to_string(slotIndex);
         return true;
     }
 
     void AskPlayerNamesForNewGame(MenuCommand& command) {
-        const Language lang = command.settings.language;
+        string defaultX = command.text.empty() ? GetDefaultPlayer1Name() : command.text;
+        string defaultO = command.extraText.empty() ? GetDefaultPlayer2Name() : command.extraText;
 
-        string defaultX = command.text.empty()
-            ? ((lang == Language::Vietnamese) ? "Nguoi choi 1" : "Player 1")
-            : command.text;
-
-        string playerX = PromptLine(
-            lang,
-            "CHOI MOI",
-            "NEW GAME",
-            (command.settings.gameMode == GameMode::PVE) ? "Nhap ten nguoi choi" : "Nhap ten nguoi choi 1",
-            (command.settings.gameMode == GameMode::PVE) ? "Enter player name" : "Enter Player 1 name",
-            defaultX
-        );
+        string playerX = PromptLine("NEW GAME", "Enter Player 1 name", defaultX);
 
         command.text = playerX;
 
         if (command.settings.gameMode == GameMode::PVE) {
-            command.extraText = GetBotDisplayName(command.settings.aiDifficulty, lang);
+            command.extraText = GetBotName(command.settings.aiDifficulty);
         }
         else {
-            string defaultO = command.extraText.empty()
-                ? ((lang == Language::Vietnamese) ? "Nguoi choi 2" : "Player 2")
-                : command.extraText;
-
-            string playerO = PromptLine(
-                lang,
-                "CHOI MOI",
-                "NEW GAME",
-                "Nhap ten nguoi choi 2",
-                "Enter Player 2 name",
-                defaultO
-            );
-
+            string playerO = PromptLine("NEW GAME", "Enter Player 2 name", defaultO);
             command.extraText = playerO;
         }
     }
 
     void HandleSaveCommand(MenuContext& menu, GameSession& game, MenuCommand& command) {
-        const Language lang = menu.appSettings.language;
-
         string defaultSaveName = command.text.empty()
             ? BuildSuggestedSaveName(game)
             : command.text;
 
-        string saveName = PromptLine(
-            lang,
-            "LUU GAME",
-            "SAVE GAME",
-            "Nhap ten save",
-            "Enter save name",
-            defaultSaveName
-        );
+        string saveName = PromptLine("SAVE GAME", "Enter save name", defaultSaveName);
 
         string message;
         SaveGameToSlot(game, command.slotIndex, saveName, message);
@@ -531,24 +445,15 @@ namespace {
     }
 
     void HandleRenameCommand(MenuContext& menu, MenuCommand& command) {
-        const Language lang = menu.appSettings.language;
-
         string currentName = command.text;
         if (currentName.empty()) {
             currentName = "slot" + to_string(command.slotIndex);
         }
 
-        string newName = PromptLine(
-            lang,
-            "DOI TEN SAVE",
-            "RENAME SAVE",
-            "Nhap ten moi cho save",
-            "Enter new save name",
-            currentName
-        );
+        string newName = PromptLine("RENAME SAVE", "Enter new save name", currentName);
 
         string message;
-        RenameSaveSlotMetadata(command.slotIndex, newName, lang, message);
+        RenameSaveSlotMetadata(command.slotIndex, newName, message);
 
         UpdateMenuRenameDraft(menu, newName);
         SetMenuStatusMessage(menu, message);
@@ -556,23 +461,18 @@ namespace {
     }
 
     void HandleDeleteCommand(MenuContext& menu, MenuCommand& command) {
-        const Language lang = menu.appSettings.language;
-
         bool accepted = PromptYesNo(
-            lang,
-            "XOA SAVE",
             "DELETE SAVE",
-            "Ban co chac muon xoa slot " + to_string(command.slotIndex) + " khong?",
             "Are you sure you want to delete slot " + to_string(command.slotIndex) + "?"
         );
 
         if (!accepted) {
-            SetMenuStatusMessage(menu, SelectText(lang, "Da huy xoa save", "Delete canceled"));
+            SetMenuStatusMessage(menu, "Delete canceled");
             return;
         }
 
         string message;
-        DeleteSaveSlotFile(command.slotIndex, lang, message);
+        DeleteSaveSlotFile(command.slotIndex, message);
         SetMenuStatusMessage(menu, message);
         RefreshMenuSaveSlotsFromFiles(menu);
     }
@@ -593,10 +493,7 @@ namespace {
 
             case MenuCommandType::ApplySettings:
                 ApplyMenuSettingsToGame(menu, game);
-                SetMenuStatusMessage(
-                    menu,
-                    SelectText(menu.appSettings.language, "Da cap nhat cai dat", "Settings updated")
-                );
+                SetMenuStatusMessage(menu, "Settings updated");
                 break;
 
             case MenuCommandType::OpenSaveMenu:
@@ -616,7 +513,6 @@ namespace {
                 return InGameFlowAction::RestartMatch;
 
             case MenuCommandType::BackToMainMenu:
-                OpenMainMenuScreen(menu);
                 return InGameFlowAction::BackToMainMenu;
 
             default:
@@ -635,9 +531,7 @@ namespace {
 
         if (result == ActionResult::Success) {
             ostringstream oss;
-            oss << "BOT "
-                << SelectText(game.settings.language, "danh vao", "moved to")
-                << " (" << aiMove.row << ", " << aiMove.col << ")";
+            oss << "BOT moved to (" << aiMove.row << ", " << aiMove.col << ")";
             message = oss.str();
         }
     }
@@ -651,6 +545,7 @@ namespace {
         while (true) {
             if (IsBotTurn(game)) {
                 RunBotMove(game, message);
+                // GIU NGUYEN CURSOR, KHONG NHAY VE GOC TRAI
             }
 
             if (game.result != GameResult::InProgress) {
@@ -663,7 +558,7 @@ namespace {
                     ResetCurrentMatch(game);
                     ApplyMenuSettingsToGame(menu, game);
                     cursor = FindDefaultCursor(game);
-                    message = SelectText(game.settings.language, "Da bat dau lai tran dau", "Match restarted");
+                    message = "Match restarted";
                     continue;
                 }
 
@@ -694,11 +589,11 @@ namespace {
                 ActionResult result = PlaceCurrentTurn(game, cursor);
 
                 if (result == ActionResult::Success) {
-                    message = SelectText(game.settings.language, "Danh co thanh cong", "Placed successfully");
+                    message = "Placed successfully";
                 }
                 else {
-                    // Khong lam gi ca neu danh vao o da co quan
-                    // Hoac nuoc di khong hop le, giu nguyen con tro va trang thai
+                    // Danh vao o da co quan thi KHONG LAM GI CA
+                    // Giữ nguyên cursor, không đổi message, không đổi lượt
                 }
             }
             else if (key == 'P' || key == 27) {
@@ -707,13 +602,13 @@ namespace {
                 InGameFlowAction action = RunInGameMenuLoop(menu, game);
 
                 if (action == InGameFlowAction::ContinuePlaying) {
-                    message = SelectText(game.settings.language, "Tiep tuc game", "Continue game");
+                    message = "Continue game";
                 }
                 else if (action == InGameFlowAction::RestartMatch) {
                     ResetCurrentMatch(game);
                     ApplyMenuSettingsToGame(menu, game);
                     cursor = FindDefaultCursor(game);
-                    message = SelectText(game.settings.language, "Da bat dau lai tran dau", "Match restarted");
+                    message = "Match restarted";
                 }
                 else if (action == InGameFlowAction::BackToMainMenu) {
                     return;
@@ -725,11 +620,7 @@ namespace {
 } // namespace
 
 int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(NULL);
-
     EnsureSaveDirectory();
-    HideConsoleCursor();
 
     GameSession game;
     MenuContext menu;
@@ -761,10 +652,7 @@ int main() {
             break;
 
         case MenuCommandType::ApplySettings:
-            SetMenuStatusMessage(
-                menu,
-                SelectText(menu.appSettings.language, "Da cap nhat cai dat", "Settings updated")
-            );
+            SetMenuStatusMessage(menu, "Settings updated");
             break;
 
         case MenuCommandType::RequestRenameSlot:
@@ -777,7 +665,7 @@ int main() {
 
         case MenuCommandType::RequestLoadSlot: {
             string message;
-            if (LoadGameFromSlot(game, command.slotIndex, menu.appSettings.language, message)) {
+            if (LoadGameFromSlot(game, command.slotIndex, message)) {
                 SyncMenuSettingsFromGame(menu, game);
                 SetMenuStatusMessage(menu, message);
                 RunGameLoop(game, menu);
@@ -810,7 +698,7 @@ int main() {
         }
     }
 
-    ClearConsoleBuffer();
-    cout << SelectText(menu.appSettings.language, "Tam biet!\n", "Goodbye!\n");
+    ClearScreen();
+    cout << "Goodbye!\n";
     return 0;
 }

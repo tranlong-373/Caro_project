@@ -9,11 +9,11 @@ namespace caro {
 
         const int kSettingsItemCount = 7;
 
-        MenuItemView MakeToggleItem(const std::string& id, const std::string& label, bool value, bool selected, Language language) {
+        MenuItemView MakeToggleItem(const std::string& id, const std::string& label, bool value, bool selected) {
             MenuItemView item;
             item.id = id;
             item.label = label;
-            item.value = FormatOnOff(value, language);
+            item.value = FormatOnOff(value);
             item.kind = MenuItemKind::Toggle;
             item.selected = selected;
             return item;
@@ -75,36 +75,26 @@ namespace caro {
         }
 
         void OpenBackDestination(MenuContext& context) {
-            MenuScreen target = context.settingsReturnScreen;
-            if (target == MenuScreen::Settings) {
-                target = MenuScreen::Main;
-            }
-            context.currentScreen = target;
+            context.currentScreen = context.settingsReturnScreen;
         }
 
     } // namespace
 
     MenuView BuildSettingsMenuView(const MenuContext& context) {
-        const Language lang = context.appSettings.language;
-
         MenuView view;
         view.screen = MenuScreen::Settings;
-        view.title = SelectText(lang, "CAI DAT", "SETTINGS");
-        view.subtitle = BuildSettingsSummary(context.appSettings, lang);
+        view.title = "SETTINGS";
+        view.subtitle = BuildSettingsSummary(context.appSettings);
         view.message = context.statusMessage;
-        view.footerHint = SelectText(
-            lang,
-            "W/S: di chuyen | A/D: doi gia tri | Enter: chon | ESC: quay lai",
-            "W/S: move | A/D: change value | Enter: select | ESC: back"
-        );
+        view.footerHint = "W/S: move | A/D: change value | Enter: confirm | ESC: back";
 
-        view.items.push_back(MakeToggleItem("sound_enabled", SelectText(lang, "Am thanh", "Sound"), context.appSettings.soundEnabled, context.settingsSelected == 0, lang));
-        view.items.push_back(MakeToggleItem("music_enabled", SelectText(lang, "Nhac nen", "Music"), context.appSettings.musicEnabled, context.settingsSelected == 1, lang));
-        view.items.push_back(MakeSliderItem("sound_volume", SelectText(lang, "Am luong hieu ung", "Sound Volume"), context.appSettings.soundVolume, context.settingsSelected == 2));
-        view.items.push_back(MakeSliderItem("music_volume", SelectText(lang, "Am luong nhac", "Music Volume"), context.appSettings.musicVolume, context.settingsSelected == 3));
-        view.items.push_back(MakeChoiceItem("language", SelectText(lang, "Ngon ngu", "Language"), GetDisplayText(context.appSettings.language, lang), context.settingsSelected == 4));
-        view.items.push_back(MakeActionItem("reset_default", SelectText(lang, "Mac dinh", "Reset Default"), context.settingsSelected == 5));
-        view.items.push_back(MakeActionItem("back", SelectText(lang, "Quay lai", "Back"), context.settingsSelected == 6));
+        view.items.push_back(MakeToggleItem("sound_enabled", "Sound", context.appSettings.soundEnabled, context.settingsSelected == 0));
+        view.items.push_back(MakeToggleItem("music_enabled", "Music", context.appSettings.musicEnabled, context.settingsSelected == 1));
+        view.items.push_back(MakeSliderItem("sound_volume", "Sound Volume", context.appSettings.soundVolume, context.settingsSelected == 2));
+        view.items.push_back(MakeSliderItem("music_volume", "Music Volume", context.appSettings.musicVolume, context.settingsSelected == 3));
+        view.items.push_back(MakeChoiceItem("language", "Language", GetDisplayText(context.appSettings.language), context.settingsSelected == 4));
+        view.items.push_back(MakeActionItem("reset_default", "Reset Default", context.settingsSelected == 5));
+        view.items.push_back(MakeActionItem("back", "Back", context.settingsSelected == 6));
 
         return view;
     }

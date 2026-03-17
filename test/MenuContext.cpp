@@ -9,12 +9,16 @@ namespace caro {
             return "New Save";
         }
 
-        std::string GetDefaultPlayer1Name(Language language) {
-            return (language == Language::Vietnamese) ? "Nguoi choi 1" : "Player 1";
+        std::string GetDefaultPlayer1Name() {
+            return "Player 1";
         }
 
-        std::string GetDefaultPlayer2Name(Language language) {
-            return (language == Language::Vietnamese) ? "Nguoi choi 2" : "Player 2";
+        std::string GetDefaultPlayer2Name() {
+            return "Player 2";
+        }
+
+        std::string GetBotName(AIDifficulty difficulty) {
+            return "BOT - " + GetDisplayText(difficulty);
         }
 
     } // namespace
@@ -29,10 +33,10 @@ namespace caro {
 
         context.appSettings = initialSettings;
         context.newGameDraft.settings = initialSettings;
-        context.newGameDraft.playerXName = GetDefaultPlayer1Name(initialSettings.language);
+        context.newGameDraft.playerXName = GetDefaultPlayer1Name();
         context.newGameDraft.playerOName = (initialSettings.gameMode == GameMode::PVE)
-            ? GetBotDisplayName(initialSettings.aiDifficulty, initialSettings.language)
-            : GetDefaultPlayer2Name(initialSettings.language);
+            ? GetBotName(initialSettings.aiDifficulty)
+            : GetDefaultPlayer2Name();
 
         context.saveSlots.clear();
         context.saveNameDraft = GetDefaultSaveName();
@@ -56,17 +60,13 @@ namespace caro {
 
     void SyncNewGameDraftFromAppSettings(MenuContext& context) {
         context.newGameDraft.settings = context.appSettings;
-
-        context.newGameDraft.playerXName = GetDefaultPlayer1Name(context.newGameDraft.settings.language);
+        context.newGameDraft.playerXName = GetDefaultPlayer1Name();
 
         if (context.newGameDraft.settings.gameMode == GameMode::PVE) {
-            context.newGameDraft.playerOName = GetBotDisplayName(
-                context.newGameDraft.settings.aiDifficulty,
-                context.newGameDraft.settings.language
-            );
+            context.newGameDraft.playerOName = GetBotName(context.newGameDraft.settings.aiDifficulty);
         }
         else {
-            context.newGameDraft.playerOName = GetDefaultPlayer2Name(context.newGameDraft.settings.language);
+            context.newGameDraft.playerOName = GetDefaultPlayer2Name();
         }
     }
 
@@ -107,33 +107,38 @@ namespace caro {
     }
 
     void SetMenuNewGameNames(MenuContext& context, const std::string& playerX, const std::string& playerO) {
-        context.newGameDraft.playerXName = playerX.empty()
-            ? GetDefaultPlayer1Name(context.newGameDraft.settings.language)
-            : playerX;
+        context.newGameDraft.playerXName = playerX.empty() ? GetDefaultPlayer1Name() : playerX;
 
         if (context.newGameDraft.settings.gameMode == GameMode::PVE) {
-            context.newGameDraft.playerOName = GetBotDisplayName(
-                context.newGameDraft.settings.aiDifficulty,
-                context.newGameDraft.settings.language
-            );
+            context.newGameDraft.playerOName = GetBotName(context.newGameDraft.settings.aiDifficulty);
         }
         else {
-            context.newGameDraft.playerOName = playerO.empty()
-                ? GetDefaultPlayer2Name(context.newGameDraft.settings.language)
-                : playerO;
+            context.newGameDraft.playerOName = playerO.empty() ? GetDefaultPlayer2Name() : playerO;
         }
     }
 
     void OpenMainMenuScreen(MenuContext& context) {
-        context.previousScreen = context.currentScreen;
         context.currentScreen = MenuScreen::Main;
-        ClearMenuStatusMessage(context);
+        context.previousScreen = MenuScreen::Main;
+
+        context.settingsReturnScreen = MenuScreen::Main;
+        context.saveReturnScreen = MenuScreen::Main;
+        context.infoReturnScreen = MenuScreen::Main;
+
+        context.settingsSelected = 0;
+        context.saveSelected = 0;
+        context.pauseSelected = 0;
+        context.resultSelected = 0;
+        context.infoSelected = 0;
+
         context.winnerDisplayName.clear();
+        ClearMenuStatusMessage(context);
     }
 
     void OpenNewGameMenuScreen(MenuContext& context) {
         context.previousScreen = context.currentScreen;
         context.currentScreen = MenuScreen::NewGame;
+        context.newGameSelected = 0;
         SyncNewGameDraftFromAppSettings(context);
         ClearMenuStatusMessage(context);
         context.winnerDisplayName.clear();
@@ -143,12 +148,14 @@ namespace caro {
         context.previousScreen = fromScreen;
         context.settingsReturnScreen = fromScreen;
         context.currentScreen = MenuScreen::Settings;
+        context.settingsSelected = 0;
         ClearMenuStatusMessage(context);
     }
 
     void OpenLoadMenuScreen(MenuContext& context) {
         context.previousScreen = context.currentScreen;
         context.currentScreen = MenuScreen::LoadGame;
+        context.loadSelected = 0;
         ClearMenuStatusMessage(context);
     }
 
@@ -156,6 +163,7 @@ namespace caro {
         context.previousScreen = context.currentScreen;
         context.saveReturnScreen = context.currentScreen;
         context.currentScreen = MenuScreen::SaveGame;
+        context.saveSelected = 0;
         context.saveNameDraft = suggestedSaveName.empty() ? GetDefaultSaveName() : suggestedSaveName;
         ClearMenuStatusMessage(context);
     }
@@ -163,12 +171,14 @@ namespace caro {
     void OpenPauseMenuScreen(MenuContext& context) {
         context.previousScreen = context.currentScreen;
         context.currentScreen = MenuScreen::Pause;
+        context.pauseSelected = 0;
         ClearMenuStatusMessage(context);
     }
 
     void OpenResultMenuScreen(MenuContext& context, GameResult result) {
         context.previousScreen = context.currentScreen;
         context.currentScreen = MenuScreen::Result;
+        context.resultSelected = 0;
         context.lastResult = result;
         ClearMenuStatusMessage(context);
     }
@@ -177,6 +187,7 @@ namespace caro {
         context.previousScreen = fromScreen;
         context.infoReturnScreen = fromScreen;
         context.currentScreen = MenuScreen::HowToPlay;
+        context.infoSelected = 0;
         ClearMenuStatusMessage(context);
     }
 
@@ -184,6 +195,7 @@ namespace caro {
         context.previousScreen = fromScreen;
         context.infoReturnScreen = fromScreen;
         context.currentScreen = MenuScreen::AboutUs;
+        context.infoSelected = 0;
         ClearMenuStatusMessage(context);
     }
 

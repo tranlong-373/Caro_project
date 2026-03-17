@@ -18,34 +18,32 @@ namespace caro {
             return item;
         }
 
-        std::string BuildResultSubtitle(const MenuContext& context, Language lang) {
+        std::string BuildResultSubtitle(const MenuContext& context) {
             if (context.lastResult == GameResult::Draw) {
-                return GetDisplayText(context.lastResult, lang);
+                return "Draw";
             }
 
             if ((context.lastResult == GameResult::XWin || context.lastResult == GameResult::OWin)
                 && !context.winnerDisplayName.empty()) {
-                return context.winnerDisplayName + " " + SelectText(lang, "thang", "wins");
+                return context.winnerDisplayName + " wins";
             }
 
-            return GetDisplayText(context.lastResult, lang);
+            return GetDisplayText(context.lastResult);
         }
 
     } // namespace
 
     MenuView BuildResultMenuView(const MenuContext& context) {
-        const Language lang = context.appSettings.language;
-
         MenuView view;
         view.screen = MenuScreen::Result;
-        view.title = SelectText(lang, "KET QUA", "RESULT");
-        view.subtitle = BuildResultSubtitle(context, lang);
+        view.title = "RESULT";
+        view.subtitle = BuildResultSubtitle(context);
         view.message = context.statusMessage;
-        view.footerHint = SelectText(lang, "W/S: di chuyen | Enter: xac nhan", "W/S: move | Enter: confirm");
+        view.footerHint = "W/S: move | Enter: confirm";
 
-        view.items.push_back(MakeActionItem("restart", SelectText(lang, "Choi lai", "Play Again"), context.resultSelected == 0));
-        view.items.push_back(MakeActionItem("save_game", SelectText(lang, "Luu game", "Save Game"), context.resultSelected == 1));
-        view.items.push_back(MakeActionItem("back_to_main", SelectText(lang, "Ve menu chinh", "Back to Main Menu"), context.resultSelected == 2));
+        view.items.push_back(MakeActionItem("restart", "Play Again", context.resultSelected == 0));
+        view.items.push_back(MakeActionItem("save_game", "Save Game", context.resultSelected == 1));
+        view.items.push_back(MakeActionItem("back_to_main", "Back to Main Menu", context.resultSelected == 2));
 
         return view;
     }
