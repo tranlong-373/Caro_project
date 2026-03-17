@@ -34,7 +34,7 @@ namespace {
         if (dir.empty()) dir = "saves";
         return dir;
     }
-    //long 24120373
+
     void EnsureSaveDirectory() {
         string dir = NormalizeSaveDirectory();
         _mkdir(dir.c_str());
@@ -157,6 +157,21 @@ namespace {
 
     string ResultToText(GameResult result, Language language) {
         return GetDisplayText(result, language);
+    }
+
+    string GetWinnerDisplayName(const GameSession& game) {
+        if (game.result == GameResult::XWin) {
+            return game.playerX.name;
+        }
+
+        if (game.result == GameResult::OWin) {
+            if (game.settings.gameMode == GameMode::PVE) {
+                return "BOT";
+            }
+            return game.playerO.name;
+        }
+
+        return "";
     }
 
     bool IsBotTurn(const GameSession& game) {
@@ -456,15 +471,15 @@ namespace {
         const Language lang = command.settings.language;
 
         string defaultX = command.text.empty()
-            ? string(config::DEFAULT_PLAYER_X_NAME)
+            ? ((lang == Language::Vietnamese) ? "Nguoi choi 1" : "Player 1")
             : command.text;
 
         string playerX = PromptLine(
             lang,
             "CHOI MOI",
             "NEW GAME",
-            (command.settings.gameMode == GameMode::PVE) ? "Nhap ten nguoi choi" : "Nhap ten nguoi choi X",
-            (command.settings.gameMode == GameMode::PVE) ? "Enter player name" : "Enter Player X name",
+            (command.settings.gameMode == GameMode::PVE) ? "Nhap ten nguoi choi" : "Nhap ten nguoi choi 1",
+            (command.settings.gameMode == GameMode::PVE) ? "Enter player name" : "Enter Player 1 name",
             defaultX
         );
 
@@ -475,15 +490,15 @@ namespace {
         }
         else {
             string defaultO = command.extraText.empty()
-                ? string(config::DEFAULT_PLAYER_O_NAME)
+                ? ((lang == Language::Vietnamese) ? "Nguoi choi 2" : "Player 2")
                 : command.extraText;
 
             string playerO = PromptLine(
                 lang,
                 "CHOI MOI",
                 "NEW GAME",
-                "Nhap ten nguoi choi O",
-                "Enter Player O name",
+                "Nhap ten nguoi choi 2",
+                "Enter Player 2 name",
                 defaultO
             );
 
@@ -620,8 +635,7 @@ namespace {
 
         if (result == ActionResult::Success) {
             ostringstream oss;
-            oss << GetBotDisplayName(game.settings.aiDifficulty, game.settings.language)
-                << " "
+            oss << "BOT "
                 << SelectText(game.settings.language, "danh vao", "moved to")
                 << " (" << aiMove.row << ", " << aiMove.col << ")";
             message = oss.str();
@@ -637,10 +651,10 @@ namespace {
         while (true) {
             if (IsBotTurn(game)) {
                 RunBotMove(game, message);
-                cursor = FindDefaultCursor(game);
             }
 
             if (game.result != GameResult::InProgress) {
+                SetMenuWinnerDisplayName(menu, GetWinnerDisplayName(game));
                 OpenResultMenu(menu, game.result);
 
                 InGameFlowAction action = RunInGameMenuLoop(menu, game);
@@ -657,7 +671,6 @@ namespace {
                     return;
                 }
 
-                cursor = FindDefaultCursor(game);
                 continue;
             }
 
@@ -683,14 +696,9 @@ namespace {
                 if (result == ActionResult::Success) {
                     message = SelectText(game.settings.language, "Danh co thanh cong", "Placed successfully");
                 }
-                else if (result == ActionResult::Occupied) {
-                    message = SelectText(game.settings.language, "O nay da duoc danh", "This cell is already occupied");
-                }
-                else if (result == ActionResult::OutOfBounds) {
-                    message = SelectText(game.settings.language, "Vi tri ngoai ban co", "Position is outside the board");
-                }
                 else {
-                    message = SelectText(game.settings.language, "Khong the danh nuoc nay", "Cannot place this move");
+                    // Khong lam gi ca neu danh vao o da co quan
+                    // Hoac nuoc di khong hop le, giu nguyen con tro va trang thai
                 }
             }
             else if (key == 'P' || key == 27) {

@@ -21,6 +21,7 @@ namespace caro {
         std::string saveNameDraft;
         std::string renameNameDraft;
         std::string statusMessage;
+        std::string winnerDisplayName;
 
         bool hasActiveGame;
         bool canSaveCurrentGame;
@@ -47,6 +48,7 @@ namespace caro {
             saveNameDraft(""),
             renameNameDraft(""),
             statusMessage(""),
+            winnerDisplayName(""),
             hasActiveGame(false),
             canSaveCurrentGame(false),
             lastResult(GameResult::InProgress),
@@ -72,6 +74,7 @@ namespace caro {
     void SetMenuHasActiveGame(MenuContext& context, bool value);
     void SetMenuCanSaveCurrentGame(MenuContext& context, bool value);
     void SetMenuLastResult(MenuContext& context, GameResult result);
+    void SetMenuWinnerDisplayName(MenuContext& context, const std::string& winnerName);
 
     void SetMenuSaveNameDraft(MenuContext& context, const std::string& saveName);
     void SetMenuRenameNameDraft(MenuContext& context, const std::string& renameName);

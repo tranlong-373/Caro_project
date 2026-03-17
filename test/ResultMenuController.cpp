@@ -18,6 +18,19 @@ namespace caro {
             return item;
         }
 
+        std::string BuildResultSubtitle(const MenuContext& context, Language lang) {
+            if (context.lastResult == GameResult::Draw) {
+                return GetDisplayText(context.lastResult, lang);
+            }
+
+            if ((context.lastResult == GameResult::XWin || context.lastResult == GameResult::OWin)
+                && !context.winnerDisplayName.empty()) {
+                return context.winnerDisplayName + " " + SelectText(lang, "thang", "wins");
+            }
+
+            return GetDisplayText(context.lastResult, lang);
+        }
+
     } // namespace
 
     MenuView BuildResultMenuView(const MenuContext& context) {
@@ -26,7 +39,7 @@ namespace caro {
         MenuView view;
         view.screen = MenuScreen::Result;
         view.title = SelectText(lang, "KET QUA", "RESULT");
-        view.subtitle = GetDisplayText(context.lastResult, lang);
+        view.subtitle = BuildResultSubtitle(context, lang);
         view.message = context.statusMessage;
         view.footerHint = SelectText(lang, "W/S: di chuyen | Enter: xac nhan", "W/S: move | Enter: confirm");
 

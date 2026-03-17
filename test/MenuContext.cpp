@@ -9,6 +9,14 @@ namespace caro {
             return "New Save";
         }
 
+        std::string GetDefaultPlayer1Name(Language language) {
+            return (language == Language::Vietnamese) ? "Nguoi choi 1" : "Player 1";
+        }
+
+        std::string GetDefaultPlayer2Name(Language language) {
+            return (language == Language::Vietnamese) ? "Nguoi choi 2" : "Player 2";
+        }
+
     } // namespace
 
     void InitializeMenuContext(MenuContext& context, const GameSettings& initialSettings) {
@@ -21,15 +29,16 @@ namespace caro {
 
         context.appSettings = initialSettings;
         context.newGameDraft.settings = initialSettings;
-        context.newGameDraft.playerXName = config::DEFAULT_PLAYER_X_NAME;
+        context.newGameDraft.playerXName = GetDefaultPlayer1Name(initialSettings.language);
         context.newGameDraft.playerOName = (initialSettings.gameMode == GameMode::PVE)
             ? GetBotDisplayName(initialSettings.aiDifficulty, initialSettings.language)
-            : std::string(config::DEFAULT_PLAYER_O_NAME);
+            : GetDefaultPlayer2Name(initialSettings.language);
 
         context.saveSlots.clear();
         context.saveNameDraft = GetDefaultSaveName();
         context.renameNameDraft.clear();
         context.statusMessage.clear();
+        context.winnerDisplayName.clear();
 
         context.hasActiveGame = false;
         context.canSaveCurrentGame = false;
@@ -48,6 +57,8 @@ namespace caro {
     void SyncNewGameDraftFromAppSettings(MenuContext& context) {
         context.newGameDraft.settings = context.appSettings;
 
+        context.newGameDraft.playerXName = GetDefaultPlayer1Name(context.newGameDraft.settings.language);
+
         if (context.newGameDraft.settings.gameMode == GameMode::PVE) {
             context.newGameDraft.playerOName = GetBotDisplayName(
                 context.newGameDraft.settings.aiDifficulty,
@@ -55,7 +66,7 @@ namespace caro {
             );
         }
         else {
-            context.newGameDraft.playerOName = config::DEFAULT_PLAYER_O_NAME;
+            context.newGameDraft.playerOName = GetDefaultPlayer2Name(context.newGameDraft.settings.language);
         }
     }
 
@@ -83,6 +94,10 @@ namespace caro {
         context.lastResult = result;
     }
 
+    void SetMenuWinnerDisplayName(MenuContext& context, const std::string& winnerName) {
+        context.winnerDisplayName = winnerName;
+    }
+
     void SetMenuSaveNameDraft(MenuContext& context, const std::string& saveName) {
         context.saveNameDraft = saveName;
     }
@@ -93,7 +108,7 @@ namespace caro {
 
     void SetMenuNewGameNames(MenuContext& context, const std::string& playerX, const std::string& playerO) {
         context.newGameDraft.playerXName = playerX.empty()
-            ? std::string(config::DEFAULT_PLAYER_X_NAME)
+            ? GetDefaultPlayer1Name(context.newGameDraft.settings.language)
             : playerX;
 
         if (context.newGameDraft.settings.gameMode == GameMode::PVE) {
@@ -104,7 +119,7 @@ namespace caro {
         }
         else {
             context.newGameDraft.playerOName = playerO.empty()
-                ? std::string(config::DEFAULT_PLAYER_O_NAME)
+                ? GetDefaultPlayer2Name(context.newGameDraft.settings.language)
                 : playerO;
         }
     }
@@ -113,6 +128,7 @@ namespace caro {
         context.previousScreen = context.currentScreen;
         context.currentScreen = MenuScreen::Main;
         ClearMenuStatusMessage(context);
+        context.winnerDisplayName.clear();
     }
 
     void OpenNewGameMenuScreen(MenuContext& context) {
@@ -120,6 +136,7 @@ namespace caro {
         context.currentScreen = MenuScreen::NewGame;
         SyncNewGameDraftFromAppSettings(context);
         ClearMenuStatusMessage(context);
+        context.winnerDisplayName.clear();
     }
 
     void OpenSettingsMenuScreen(MenuContext& context, MenuScreen fromScreen) {
