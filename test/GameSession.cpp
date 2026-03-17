@@ -1,7 +1,7 @@
 #include "GameSession.h"
 #include "GameAPI.h"
 #include <iostream>
-
+//long
 namespace caro {
 
     void InitializeSession(GameSession& session) {

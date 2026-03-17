@@ -34,7 +34,7 @@ namespace {
         if (dir.empty()) dir = "saves";
         return dir;
     }
-
+    //long 24120373
     void EnsureSaveDirectory() {
         string dir = NormalizeSaveDirectory();
         _mkdir(dir.c_str());
