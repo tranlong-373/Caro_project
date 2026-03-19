@@ -8,6 +8,9 @@
 #include <conio.h>
 #include <direct.h>
 
+#define NOMINMAX
+#include <windows.h>
+
 #include "GameAPI.h"
 #include "MenuFacade.h"
 #include "MenuText.h"
@@ -22,6 +25,147 @@ namespace {
         RestartMatch = 1,
         BackToMainMenu = 2
     };
+
+    struct HoldKeyState {
+        bool wasDown;
+        ULONGLONG nextRepeatAt;
+
+        HoldKeyState() : wasDown(false), nextRepeatAt(0) {}
+    };
+
+    struct EdgeKeyState {
+        bool wasDown;
+        EdgeKeyState() : wasDown(false) {}
+    };
+
+    string g_lastRawFrame;
+    int g_lastRenderedLineCount = 0;
+
+    // =====================================================
+    // Console helpers
+    // =====================================================
+
+    HANDLE GetConsoleHandle() {
+        static HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+        return h;
+    }
+
+    void SetCursorVisible(bool visible) {
+        CONSOLE_CURSOR_INFO info;
+        info.dwSize = 20;
+        info.bVisible = visible ? TRUE : FALSE;
+        SetConsoleCursorInfo(GetConsoleHandle(), &info);
+    }
+
+    void MoveCursorHome() {
+        COORD home = { 0, 0 };
+        SetConsoleCursorPosition(GetConsoleHandle(), home);
+    }
+
+    void ClearConsoleHard() {
+        HANDLE h = GetConsoleHandle();
+
+        CONSOLE_SCREEN_BUFFER_INFO csbi;
+        if (!GetConsoleScreenBufferInfo(h, &csbi)) return;
+
+        DWORD cellCount = (DWORD)csbi.dwSize.X * (DWORD)csbi.dwSize.Y;
+        DWORD written = 0;
+        COORD home = { 0, 0 };
+
+        FillConsoleOutputCharacterA(h, ' ', cellCount, home, &written);
+        FillConsoleOutputAttribute(h, csbi.wAttributes, cellCount, home, &written);
+        SetConsoleCursorPosition(h, home);
+    }
+
+    void ResetRenderCache() {
+        g_lastRawFrame.clear();
+        g_lastRenderedLineCount = 0;
+    }
+
+    int GetConsoleWidth() {
+        CONSOLE_SCREEN_BUFFER_INFO csbi;
+        if (!GetConsoleScreenBufferInfo(GetConsoleHandle(), &csbi)) {
+            return 120;
+        }
+
+        int width = (int)csbi.srWindow.Right - (int)csbi.srWindow.Left + 1;
+        if (width <= 0) width = 120;
+        return width;
+    }
+
+    vector<string> SplitLinesKeepEmpty(const string& text) {
+        vector<string> lines;
+        string current;
+
+        for (size_t i = 0; i < text.size(); ++i) {
+            if (text[i] == '\n') {
+                lines.push_back(current);
+                current.clear();
+            }
+            else if (text[i] != '\r') {
+                current.push_back(text[i]);
+            }
+        }
+
+        lines.push_back(current);
+        return lines;
+    }
+
+    string NormalizeFrameForConsole(const string& rawFrame) {
+        int width = GetConsoleWidth();
+        vector<string> lines = SplitLinesKeepEmpty(rawFrame);
+
+        int lineCount = (int)lines.size();
+        int finalLineCount = (lineCount > g_lastRenderedLineCount)
+            ? lineCount
+            : g_lastRenderedLineCount;
+
+        ostringstream out;
+
+        for (int i = 0; i < finalLineCount; ++i) {
+            string line = (i < lineCount ? lines[i] : "");
+
+            if ((int)line.size() > width) {
+                line = line.substr(0, width);
+            }
+            else if ((int)line.size() < width) {
+                line.append(width - (int)line.size(), ' ');
+            }
+
+            out << line;
+            if (i + 1 < finalLineCount) {
+                out << '\n';
+            }
+        }
+
+        g_lastRenderedLineCount = lineCount;
+        return out.str();
+    }
+
+    void PresentFrame(const string& rawFrame) {
+        if (rawFrame == g_lastRawFrame) {
+            return;
+        }
+
+        string normalized = NormalizeFrameForConsole(rawFrame);
+
+        MoveCursorHome();
+
+        DWORD written = 0;
+        WriteConsoleA(
+            GetConsoleHandle(),
+            normalized.c_str(),
+            (DWORD)normalized.size(),
+            &written,
+            NULL
+        );
+
+        g_lastRawFrame = rawFrame;
+    }
+
+    // =====================================================
+    // File / save helpers
+    // =====================================================
 
     string NormalizeSaveDirectory() {
         string dir = config::DEFAULT_SAVE_DIRECTORY;
@@ -51,6 +195,10 @@ namespace {
         return fin.good();
     }
 
+    // =====================================================
+    // Input helpers
+    // =====================================================
+
     int ReadKeyUpper() {
         int ch = _getch();
 
@@ -61,35 +209,131 @@ namespace {
         return ch;
     }
 
-    void ClearScreen() {
-        system("cls");
+    bool IsVirtualKeyDown(int vk) {
+        return (GetAsyncKeyState(vk) & 0x8000) != 0;
     }
 
+    void ClearPendingConsoleInputKeys() {
+        while (_kbhit()) {
+            _getch();
+        }
+    }
+
+    void WaitUntilGameplayKeysReleased() {
+        while (IsVirtualKeyDown('W') ||
+            IsVirtualKeyDown('A') ||
+            IsVirtualKeyDown('S') ||
+            IsVirtualKeyDown('D') ||
+            IsVirtualKeyDown('P') ||
+            IsVirtualKeyDown(VK_RETURN) ||
+            IsVirtualKeyDown(VK_ESCAPE)) {
+            Sleep(10);
+        }
+    }
+
+    bool ConsumeHoldKey(
+        HoldKeyState& state,
+        bool isDown,
+        ULONGLONG now,
+        ULONGLONG firstDelayMs,
+        ULONGLONG repeatDelayMs
+    ) {
+        if (!isDown) {
+            state.wasDown = false;
+            state.nextRepeatAt = 0;
+            return false;
+        }
+
+        if (!state.wasDown) {
+            state.wasDown = true;
+            state.nextRepeatAt = now + firstDelayMs;
+            return true;
+        }
+
+        if (now >= state.nextRepeatAt) {
+            state.nextRepeatAt = now + repeatDelayMs;
+            return true;
+        }
+
+        return false;
+    }
+
+    bool ConsumeEdgeKey(EdgeKeyState& state, bool isDown) {
+        if (isDown && !state.wasDown) {
+            state.wasDown = true;
+            return true;
+        }
+
+        if (!isDown) {
+            state.wasDown = false;
+        }
+
+        return false;
+    }
+
+    void ResetGameplayKeyStates(
+        HoldKeyState& upKey,
+        HoldKeyState& downKey,
+        HoldKeyState& leftKey,
+        HoldKeyState& rightKey,
+        EdgeKeyState& enterKey,
+        EdgeKeyState& pauseKey,
+        EdgeKeyState& escKey
+    ) {
+        upKey = HoldKeyState();
+        downKey = HoldKeyState();
+        leftKey = HoldKeyState();
+        rightKey = HoldKeyState();
+        enterKey = EdgeKeyState();
+        pauseKey = EdgeKeyState();
+        escKey = EdgeKeyState();
+    }
+
+    // =====================================================
+    // Prompt helpers
+    // =====================================================
+
     string PromptLine(const string& title, const string& prompt, const string& defaultValue) {
-        ClearScreen();
+        ResetRenderCache();
+        ClearConsoleHard();
+        ClearPendingConsoleInputKeys();
+
         cout << title << "\n\n";
         cout << prompt;
+
         if (!defaultValue.empty()) {
             cout << " [" << defaultValue << "]";
         }
+
         cout << "\n> ";
 
         string line;
         getline(cin, line);
+
+        ClearPendingConsoleInputKeys();
 
         if (line.empty()) return defaultValue;
         return line;
     }
 
     bool PromptYesNo(const string& title, const string& question) {
-        ClearScreen();
+        ResetRenderCache();
+        ClearConsoleHard();
+        ClearPendingConsoleInputKeys();
+
         cout << title << "\n\n";
         cout << question << "\n";
         cout << "Nhan Y de dong y, phim bat ky de huy.\n";
 
         int key = ReadKeyUpper();
+
+        ClearPendingConsoleInputKeys();
         return key == 'Y';
     }
+
+    // =====================================================
+    // Game text helpers
+    // =====================================================
 
     std::string GetDefaultPlayer1Name() {
         return "Player 1";
@@ -161,70 +405,129 @@ namespace {
         return FindFirstEmptyCell(game);
     }
 
-    void PrintBoardWithCursor(const GameSession& game, const Position& cursor) {
+    bool IsWinningCell(const GameSession& game, int row, int col) {
+        for (size_t i = 0; i < game.winningLine.size(); ++i) {
+            if (game.winningLine[i].row == row && game.winningLine[i].col == col) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void AppendBoardToStream(
+        ostream& out,
+        const GameSession& game,
+        const Position& cursor,
+        bool showWinningLine
+    ) {
         int n = GetBoardSize(game);
 
-        cout << "     ";
+        out << "     ";
         for (int c = 0; c < n; ++c) {
-            cout << setw(3) << c;
+            out << setw(3) << c;
         }
-        cout << "\n";
+        out << "\n";
 
         for (int r = 0; r < n; ++r) {
-            cout << setw(3) << r << "  ";
+            out << setw(3) << r << "  ";
             for (int c = 0; c < n; ++c) {
                 char ch = CellToChar(GetCell(game, Position(r, c)));
 
-                if (r == cursor.row && c == cursor.col) {
-                    cout << "[" << ch << "]";
+                bool isCursor = (game.result == GameResult::InProgress &&
+                    r == cursor.row && c == cursor.col);
+
+                bool isWinning = (showWinningLine && IsWinningCell(game, r, c));
+
+                if (isCursor) {
+                    out << "[" << ch << "]";
+                }
+                else if (isWinning) {
+                    out << "{" << ch << "}";
                 }
                 else {
-                    cout << " " << ch << " ";
+                    out << " " << ch << " ";
                 }
             }
-            cout << "\n";
+            out << "\n";
         }
     }
 
-    void PrintGameHeader(const GameSession& game, const string& message) {
-        cout << "=========== CARO CONSOLE ===========\n\n";
-        cout << "Mode      : " << ToString(game.settings.gameMode) << "\n";
-        cout << "Rule      : " << ToString(game.settings.ruleMode) << "\n";
-        cout << "Player X  : " << game.playerX.name << "\n";
-        cout << "Player O  : " << game.playerO.name << "\n";
-        cout << "Turn      : " << ToString(game.currentTurn) << "\n";
-        cout << "Result    : " << ResultToText(game.result) << "\n";
-        cout << "Moves     : " << game.moveCount << "\n";
-        cout << "Sound     : " << (game.settings.soundEnabled ? "ON" : "OFF")
+    void AppendGameHeaderToStream(ostream& out, const GameSession& game, const string& message) {
+        out << "=========== CARO CONSOLE ===========\n\n";
+        out << "Mode      : " << ToString(game.settings.gameMode) << "\n";
+        out << "Rule      : " << ToString(game.settings.ruleMode) << "\n";
+        out << "Player X  : " << game.playerX.name << "\n";
+        out << "Player O  : " << game.playerO.name << "\n";
+        out << "Turn      : " << ToString(game.currentTurn) << "\n";
+        out << "Result    : " << ResultToText(game.result) << "\n";
+        out << "Moves     : " << game.moveCount << "\n";
+        out << "Sound     : " << (game.settings.soundEnabled ? "ON" : "OFF")
             << " (" << game.settings.soundVolume << "%)\n";
-        cout << "Music     : " << (game.settings.musicEnabled ? "ON" : "OFF")
+        out << "Music     : " << (game.settings.musicEnabled ? "ON" : "OFF")
             << " (" << game.settings.musicVolume << "%)\n";
-        cout << "Language  : " << ToString(game.settings.language) << "\n";
+        out << "Language  : " << ToString(game.settings.language) << "\n";
 
         if (!game.currentSaveName.empty()) {
-            cout << "Save name : " << game.currentSaveName << "\n";
+            out << "Save name : " << game.currentSaveName << "\n";
         }
 
         if (!message.empty()) {
-            cout << "Message   : " << message << "\n";
+            out << "Message   : " << message << "\n";
         }
 
-        cout << "\n";
+        out << "\n";
     }
 
-    void PrintControls() {
-        cout << "\n===== CONTROLS =====\n";
-        cout << "W/A/S/D : Move\n";
-        cout << "Enter   : Place piece / confirm\n";
-        cout << "P / ESC : Pause menu\n";
-        cout << "In menu : W/S move, A/D change, Enter confirm\n";
+    void AppendControlsToStream(ostream& out) {
+        out << "\n===== CONTROLS =====\n";
+        out << "W/A/S/D : Move\n";
+        out << "Enter   : Place piece / confirm\n";
+        out << "P / ESC : Pause menu\n";
+        out << "In menu : W/S move, A/D change, Enter confirm\n";
     }
 
-    void DrawGameScreen(const GameSession& game, const Position& cursor, const string& message) {
-        ClearScreen();
-        PrintGameHeader(game, message);
-        PrintBoardWithCursor(game, cursor);
-        PrintControls();
+    string BuildGameScreenText(
+        const GameSession& game,
+        const Position& cursor,
+        const string& message,
+        bool showWinningLine
+    ) {
+        ostringstream out;
+        AppendGameHeaderToStream(out, game, message);
+        AppendBoardToStream(out, game, cursor, showWinningLine);
+        AppendControlsToStream(out);
+        return out.str();
+    }
+
+    void DrawGameScreen(
+        const GameSession& game,
+        const Position& cursor,
+        const string& message,
+        bool showWinningLine = true
+    ) {
+        PresentFrame(BuildGameScreenText(game, cursor, message, showWinningLine));
+    }
+
+    void PlayWinAnimationBeforeResultMenu(
+        const GameSession& game,
+        const Position& cursor,
+        const string& message
+    ) {
+        if ((game.result != GameResult::XWin && game.result != GameResult::OWin) ||
+            game.winningLine.empty()) {
+            return;
+        }
+
+        const DWORD kFrameDelayMs = 120;
+        const int kFrameCount = 10;
+
+        for (int i = 0; i < kFrameCount; ++i) {
+            bool visible = (i % 2 == 0);
+            DrawGameScreen(game, cursor, message, visible);
+            Sleep(kFrameDelayMs);
+        }
+
+        DrawGameScreen(game, cursor, message, true);
     }
 
     string BuildAutoSaveName(const GameSession& game, int slot) {
@@ -253,6 +556,10 @@ namespace {
         return oss.str();
     }
 
+    // =====================================================
+    // Menu render/input helpers
+    // =====================================================
+
     MenuInput ReadMenuInputFromKeyboard() {
         int key = ReadKeyUpper();
 
@@ -266,44 +573,54 @@ namespace {
         return MenuInput::None;
     }
 
-    void PrintSingleMenuItem(const MenuItemView& item) {
+    void AppendSingleMenuItemToStream(ostream& out, const MenuItemView& item) {
         string prefix = item.selected ? " > " : "   ";
         string disabled = item.enabled ? "" : "[Locked] ";
 
-        cout << prefix << disabled << item.label;
+        out << prefix << disabled << item.label;
 
         if (!item.value.empty() && item.kind != MenuItemKind::SaveSlot) {
-            cout << " : " << item.value;
+            out << " : " << item.value;
         }
 
-        cout << "\n";
+        out << "\n";
 
         if (item.selected && !item.hint.empty()) {
-            cout << "     " << item.hint << "\n";
+            out << "     " << item.hint << "\n";
         }
     }
 
-    void DrawMenuView(const MenuView& view) {
-        ClearScreen();
+    string BuildMenuViewText(const MenuView& view) {
+        ostringstream out;
 
-        cout << "=========== " << view.title << " ===========\n\n";
+        out << "=========== " << view.title << " ===========\n\n";
 
         if (!view.subtitle.empty()) {
-            cout << view.subtitle << "\n\n";
+            out << view.subtitle << "\n\n";
         }
 
         for (size_t i = 0; i < view.items.size(); ++i) {
-            PrintSingleMenuItem(view.items[i]);
+            AppendSingleMenuItemToStream(out, view.items[i]);
         }
 
         if (!view.message.empty()) {
-            cout << "\n" << view.message << "\n";
+            out << "\n" << view.message << "\n";
         }
 
         if (!view.footerHint.empty()) {
-            cout << "\n" << view.footerHint << "\n";
+            out << "\n" << view.footerHint << "\n";
         }
+
+        return out.str();
     }
+
+    void DrawMenuView(const MenuView& view) {
+        PresentFrame(BuildMenuViewText(view));
+    }
+
+    // =====================================================
+    // Game/menu sync helpers
+    // =====================================================
 
     void ApplyMenuSettingsToGame(MenuContext& menu, GameSession& game) {
         game.settings.soundEnabled = menu.appSettings.soundEnabled;
@@ -329,6 +646,10 @@ namespace {
         UpdateMenuLastResult(menu, game.result);
         UpdateMenuSaveNameDraft(menu, BuildSuggestedSaveName(game));
     }
+
+    // =====================================================
+    // Save/load helpers
+    // =====================================================
 
     bool SaveGameToSlot(GameSession& game, int slotIndex, const string& saveName, string& message) {
         string path = BuildSavePath(slotIndex);
@@ -412,12 +733,15 @@ namespace {
         return true;
     }
 
+    // =====================================================
+    // Menu actions
+    // =====================================================
+
     void AskPlayerNamesForNewGame(MenuCommand& command) {
         string defaultX = command.text.empty() ? GetDefaultPlayer1Name() : command.text;
         string defaultO = command.extraText.empty() ? GetDefaultPlayer2Name() : command.extraText;
 
         string playerX = PromptLine("NEW GAME", "Enter Player 1 name", defaultX);
-
         command.text = playerX;
 
         if (command.settings.gameMode == GameMode::PVE) {
@@ -427,6 +751,8 @@ namespace {
             string playerO = PromptLine("NEW GAME", "Enter Player 2 name", defaultO);
             command.extraText = playerO;
         }
+
+        ResetRenderCache();
     }
 
     void HandleSaveCommand(MenuContext& menu, GameSession& game, MenuCommand& command) {
@@ -442,6 +768,8 @@ namespace {
         UpdateMenuSaveNameDraft(menu, saveName);
         SetMenuStatusMessage(menu, message);
         RefreshMenuSaveSlotsFromFiles(menu);
+
+        ResetRenderCache();
     }
 
     void HandleRenameCommand(MenuContext& menu, MenuCommand& command) {
@@ -458,6 +786,8 @@ namespace {
         UpdateMenuRenameDraft(menu, newName);
         SetMenuStatusMessage(menu, message);
         RefreshMenuSaveSlotsFromFiles(menu);
+
+        ResetRenderCache();
     }
 
     void HandleDeleteCommand(MenuContext& menu, MenuCommand& command) {
@@ -468,6 +798,7 @@ namespace {
 
         if (!accepted) {
             SetMenuStatusMessage(menu, "Delete canceled");
+            ResetRenderCache();
             return;
         }
 
@@ -475,6 +806,8 @@ namespace {
         DeleteSaveSlotFile(command.slotIndex, message);
         SetMenuStatusMessage(menu, message);
         RefreshMenuSaveSlotsFromFiles(menu);
+
+        ResetRenderCache();
     }
 
     InGameFlowAction RunInGameMenuLoop(MenuContext& menu, GameSession& game) {
@@ -507,12 +840,15 @@ namespace {
                 break;
 
             case MenuCommandType::ContinueGame:
+                ResetRenderCache();
                 return InGameFlowAction::ContinuePlaying;
 
             case MenuCommandType::RestartGame:
+                ResetRenderCache();
                 return InGameFlowAction::RestartMatch;
 
             case MenuCommandType::BackToMainMenu:
+                ResetRenderCache();
                 return InGameFlowAction::BackToMainMenu;
 
             default:
@@ -520,6 +856,10 @@ namespace {
             }
         }
     }
+
+    // =====================================================
+    // Bot / gameplay
+    // =====================================================
 
     void RunBotMove(GameSession& game, string& message) {
         if (!IsBotTurn(game)) return;
@@ -540,25 +880,72 @@ namespace {
         Position cursor = FindDefaultCursor(game);
         string message;
 
+        bool needsRedraw = true;
+        bool resultMenuOpenedForThisMatch = false;
+
+        HoldKeyState upKey;
+        HoldKeyState downKey;
+        HoldKeyState leftKey;
+        HoldKeyState rightKey;
+        EdgeKeyState enterKey;
+        EdgeKeyState pauseKey;
+        EdgeKeyState escKey;
+
         SyncMenuSettingsFromGame(menu, game);
+        ResetRenderCache();
+
+        const ULONGLONG firstRepeatDelayMs = 140;
+        const ULONGLONG repeatDelayMs = 45;
+        const DWORD idleSleepMs = 8;
 
         while (true) {
             if (IsBotTurn(game)) {
                 RunBotMove(game, message);
-                // GIU NGUYEN CURSOR, KHONG NHAY VE GOC TRAI
+                needsRedraw = true;
             }
 
             if (game.result != GameResult::InProgress) {
-                SetMenuWinnerDisplayName(menu, GetWinnerDisplayName(game));
-                OpenResultMenu(menu, game.result);
+                if (!resultMenuOpenedForThisMatch) {
+                    if (needsRedraw) {
+                        DrawGameScreen(game, cursor, message, true);
+                        needsRedraw = false;
+                    }
+
+                    PlayWinAnimationBeforeResultMenu(game, cursor, message);
+
+                    ResetGameplayKeyStates(
+                        upKey, downKey, leftKey, rightKey,
+                        enterKey, pauseKey, escKey
+                    );
+
+                    WaitUntilGameplayKeysReleased();
+                    ClearPendingConsoleInputKeys();
+
+                    SetMenuWinnerDisplayName(menu, GetWinnerDisplayName(game));
+                    OpenResultMenu(menu, game.result);
+
+                    resultMenuOpenedForThisMatch = true;
+                    ResetRenderCache();
+                }
 
                 InGameFlowAction action = RunInGameMenuLoop(menu, game);
+
+                ResetGameplayKeyStates(
+                    upKey, downKey, leftKey, rightKey,
+                    enterKey, pauseKey, escKey
+                );
+
+                WaitUntilGameplayKeysReleased();
+                ClearPendingConsoleInputKeys();
 
                 if (action == InGameFlowAction::RestartMatch) {
                     ResetCurrentMatch(game);
                     ApplyMenuSettingsToGame(menu, game);
                     cursor = FindDefaultCursor(game);
                     message = "Match restarted";
+                    needsRedraw = true;
+                    resultMenuOpenedForThisMatch = false;
+                    ResetRenderCache();
                     continue;
                 }
 
@@ -566,54 +953,113 @@ namespace {
                     return;
                 }
 
+                needsRedraw = true;
+                ResetRenderCache();
                 continue;
             }
 
-            DrawGameScreen(game, cursor, message);
+            resultMenuOpenedForThisMatch = false;
 
-            int key = ReadKeyUpper();
+            if (needsRedraw) {
+                DrawGameScreen(game, cursor, message, true);
+                needsRedraw = false;
+            }
 
-            if (key == 'W') {
-                if (cursor.row > 0) cursor.row--;
+            ULONGLONG now = GetTickCount64();
+            bool moved = false;
+
+            if (ConsumeHoldKey(upKey, IsVirtualKeyDown('W'), now, firstRepeatDelayMs, repeatDelayMs)) {
+                if (cursor.row > 0) {
+                    cursor.row--;
+                    moved = true;
+                }
             }
-            else if (key == 'S') {
-                if (cursor.row + 1 < GetBoardSize(game)) cursor.row++;
+
+            if (ConsumeHoldKey(downKey, IsVirtualKeyDown('S'), now, firstRepeatDelayMs, repeatDelayMs)) {
+                if (cursor.row + 1 < GetBoardSize(game)) {
+                    cursor.row++;
+                    moved = true;
+                }
             }
-            else if (key == 'A') {
-                if (cursor.col > 0) cursor.col--;
+
+            if (ConsumeHoldKey(leftKey, IsVirtualKeyDown('A'), now, firstRepeatDelayMs, repeatDelayMs)) {
+                if (cursor.col > 0) {
+                    cursor.col--;
+                    moved = true;
+                }
             }
-            else if (key == 'D') {
-                if (cursor.col + 1 < GetBoardSize(game)) cursor.col++;
+
+            if (ConsumeHoldKey(rightKey, IsVirtualKeyDown('D'), now, firstRepeatDelayMs, repeatDelayMs)) {
+                if (cursor.col + 1 < GetBoardSize(game)) {
+                    cursor.col++;
+                    moved = true;
+                }
             }
-            else if (key == 13) {
+
+            if (moved) {
+                needsRedraw = true;
+            }
+
+            if (ConsumeEdgeKey(enterKey, IsVirtualKeyDown(VK_RETURN))) {
                 ActionResult result = PlaceCurrentTurn(game, cursor);
 
                 if (result == ActionResult::Success) {
                     message = "Placed successfully";
-                }
-                else {
-                    // Danh vao o da co quan thi KHONG LAM GI CA
-                    // Giữ nguyên cursor, không đổi message, không đổi lượt
+                    needsRedraw = true;
                 }
             }
-            else if (key == 'P' || key == 27) {
+
+            bool pausePressed = false;
+
+            if (ConsumeEdgeKey(pauseKey, IsVirtualKeyDown('P'))) {
+                pausePressed = true;
+            }
+
+            if (ConsumeEdgeKey(escKey, IsVirtualKeyDown(VK_ESCAPE))) {
+                pausePressed = true;
+            }
+
+            if (pausePressed) {
+                ResetGameplayKeyStates(
+                    upKey, downKey, leftKey, rightKey,
+                    enterKey, pauseKey, escKey
+                );
+
+                WaitUntilGameplayKeysReleased();
+                ClearPendingConsoleInputKeys();
+
                 OpenPauseMenu(menu);
 
                 InGameFlowAction action = RunInGameMenuLoop(menu, game);
 
+                ResetGameplayKeyStates(
+                    upKey, downKey, leftKey, rightKey,
+                    enterKey, pauseKey, escKey
+                );
+
+                WaitUntilGameplayKeysReleased();
+                ClearPendingConsoleInputKeys();
+
                 if (action == InGameFlowAction::ContinuePlaying) {
                     message = "Continue game";
+                    needsRedraw = true;
+                    ResetRenderCache();
                 }
                 else if (action == InGameFlowAction::RestartMatch) {
                     ResetCurrentMatch(game);
                     ApplyMenuSettingsToGame(menu, game);
                     cursor = FindDefaultCursor(game);
                     message = "Match restarted";
+                    needsRedraw = true;
+                    resultMenuOpenedForThisMatch = false;
+                    ResetRenderCache();
                 }
                 else if (action == InGameFlowAction::BackToMainMenu) {
                     return;
                 }
             }
+
+            Sleep(idleSleepMs);
         }
     }
 
@@ -621,6 +1067,9 @@ namespace {
 
 int main() {
     EnsureSaveDirectory();
+    SetCursorVisible(false);
+    ResetRenderCache();
+    ClearConsoleHard();
 
     GameSession game;
     MenuContext menu;
@@ -670,6 +1119,7 @@ int main() {
                 SetMenuStatusMessage(menu, message);
                 RunGameLoop(game, menu);
                 OpenMainMenuScreen(menu);
+                ResetRenderCache();
             }
             else {
                 SetMenuStatusMessage(menu, message);
@@ -686,6 +1136,7 @@ int main() {
 
             RunGameLoop(game, menu);
             OpenMainMenuScreen(menu);
+            ResetRenderCache();
             break;
         }
 
@@ -698,7 +1149,8 @@ int main() {
         }
     }
 
-    ClearScreen();
+    ResetRenderCache();
+    ClearConsoleHard();
     cout << "Goodbye!\n";
     return 0;
 }

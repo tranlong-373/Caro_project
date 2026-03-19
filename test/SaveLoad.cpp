@@ -1,4 +1,5 @@
 #include "SaveLoad.h"
+#include "GameRules.h"
 
 #include <cstdio>
 #include <ctime>
@@ -246,6 +247,14 @@ namespace caro {
             game.history.push_back(
                 Move(Position(row, col), (CellState)symbol, moveNumber)
             );
+        }
+
+        game.winningLine.clear();
+
+        if (!game.history.empty() &&
+            (game.result == GameResult::XWin || game.result == GameResult::OWin)) {
+            const Move& lastMove = game.history.back();
+            game.winningLine = FindWinningLine(game, lastMove.pos, lastMove.symbol);
         }
 
         return true;

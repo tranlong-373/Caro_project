@@ -28,6 +28,12 @@ namespace caro {
         CellState symbol
     );
 
+    std::vector<Position> FindWinningLine(
+        const GameSession& game,
+        Position lastMove,
+        CellState symbol
+    );
+
     GameResult EvaluateBoard(const GameSession& game, Position lastMove);
 
 } // namespace caro

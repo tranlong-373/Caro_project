@@ -42,49 +42,96 @@ namespace caro {
             return (value != CellState::Empty && value != symbol);
         }
 
-        bool CheckDirectionStandard(
+        std::vector<Position> CollectConnectedLine(
             const GameSession& game,
             Position lastMove,
             CellState symbol,
             int dRow,
             int dCol
         ) {
-            int backCount = 0;
-            int r = lastMove.row - dRow;
-            int c = lastMove.col - dCol;
+            std::vector<Position> backPart;
+            std::vector<Position> line;
+
             int n = (int)game.board.size();
 
+            int r = lastMove.row - dRow;
+            int c = lastMove.col - dCol;
             while (r >= 0 && r < n && c >= 0 && c < n && game.board[r][c] == symbol) {
-                ++backCount;
+                backPart.push_back(Position(r, c));
                 r -= dRow;
                 c -= dCol;
             }
 
-            int end1Row = r;
-            int end1Col = c;
+            for (int i = (int)backPart.size() - 1; i >= 0; --i) {
+                line.push_back(backPart[i]);
+            }
 
-            int forwardCount = 0;
+            line.push_back(lastMove);
+
             r = lastMove.row + dRow;
             c = lastMove.col + dCol;
-
             while (r >= 0 && r < n && c >= 0 && c < n && game.board[r][c] == symbol) {
-                ++forwardCount;
+                line.push_back(Position(r, c));
                 r += dRow;
                 c += dCol;
             }
 
-            int end2Row = r;
-            int end2Col = c;
+            return line;
+        }
 
-            int total = backCount + 1 + forwardCount;
-            if (total < config::WIN_LENGTH) {
+        bool IsStandardWinningLine(
+            const GameSession& game,
+            const std::vector<Position>& line,
+            CellState symbol,
+            int dRow,
+            int dCol
+        ) {
+            if ((int)line.size() < config::WIN_LENGTH) {
                 return false;
             }
 
-            bool blocked1 = IsBlockedEnd(game, end1Row, end1Col, symbol);
-            bool blocked2 = IsBlockedEnd(game, end2Row, end2Col, symbol);
+            const Position& first = line.front();
+            const Position& last = line.back();
+
+            bool blocked1 = IsBlockedEnd(game, first.row - dRow, first.col - dCol, symbol);
+            bool blocked2 = IsBlockedEnd(game, last.row + dRow, last.col + dCol, symbol);
 
             return !(blocked1 && blocked2);
+        }
+
+        std::vector<Position> FindWinningLineForRule(
+            const GameSession& game,
+            Position lastMove,
+            CellState symbol,
+            RuleMode ruleMode
+        ) {
+            static const int directions[4][2] = {
+                {0, 1}, {1, 0}, {1, 1}, {1, -1}
+            };
+
+            if (!IsInsideBoard(game, lastMove)) return std::vector<Position>();
+            if (symbol == CellState::Empty) return std::vector<Position>();
+
+            for (int i = 0; i < 4; ++i) {
+                int dRow = directions[i][0];
+                int dCol = directions[i][1];
+
+                std::vector<Position> line = CollectConnectedLine(game, lastMove, symbol, dRow, dCol);
+
+                if ((int)line.size() < config::WIN_LENGTH) {
+                    continue;
+                }
+
+                if (ruleMode == RuleMode::FreeStyle) {
+                    return line;
+                }
+
+                if (IsStandardWinningLine(game, line, symbol, dRow, dCol)) {
+                    return line;
+                }
+            }
+
+            return std::vector<Position>();
         }
 
         GameResult ResultFromCell(CellState symbol) {
@@ -116,25 +163,7 @@ namespace caro {
         Position lastMove,
         CellState symbol
     ) {
-        static const int directions[4][2] = {
-            {0, 1}, {1, 0}, {1, 1}, {1, -1}
-        };
-
-        for (int i = 0; i < 4; ++i) {
-            int total = CountContinuousCells(
-                game,
-                lastMove,
-                symbol,
-                directions[i][0],
-                directions[i][1]
-            );
-
-            if (total >= config::WIN_LENGTH) {
-                return true;
-            }
-        }
-
-        return false;
+        return !FindWinningLineForRule(game, lastMove, symbol, RuleMode::FreeStyle).empty();
     }
 
     bool IsStandardRuleWinningLine(
@@ -142,17 +171,15 @@ namespace caro {
         Position lastMove,
         CellState symbol
     ) {
-        static const int directions[4][2] = {
-            {0, 1}, {1, 0}, {1, 1}, {1, -1}
-        };
+        return !FindWinningLineForRule(game, lastMove, symbol, RuleMode::Standard).empty();
+    }
 
-        for (int i = 0; i < 4; ++i) {
-            if (CheckDirectionStandard(game, lastMove, symbol, directions[i][0], directions[i][1])) {
-                return true;
-            }
-        }
-
-        return false;
+    std::vector<Position> FindWinningLine(
+        const GameSession& game,
+        Position lastMove,
+        CellState symbol
+    ) {
+        return FindWinningLineForRule(game, lastMove, symbol, game.settings.ruleMode);
     }
 
     GameResult EvaluateBoard(const GameSession& game, Position lastMove) {
@@ -165,16 +192,8 @@ namespace caro {
             return IsBoardFull(game) ? GameResult::Draw : GameResult::InProgress;
         }
 
-        bool isWin = false;
-
-        if (game.settings.ruleMode == RuleMode::FreeStyle) {
-            isWin = HasFiveInRow(game, lastMove, symbol);
-        }
-        else {
-            isWin = IsStandardRuleWinningLine(game, lastMove, symbol);
-        }
-
-        if (isWin) {
+        std::vector<Position> line = FindWinningLine(game, lastMove, symbol);
+        if (!line.empty()) {
             return ResultFromCell(symbol);
         }
 

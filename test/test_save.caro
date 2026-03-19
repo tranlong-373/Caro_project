@@ -1,32 +1,805 @@
-CARO_SAVE_V1
-15
-0 0 0
-1 1 100 100 0
-PlayerX
-PlayerO
-1 2 3 0
-5 3 2 0 0 0
-test_save
-13/03/2026
-14:06:47
-0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 -1 -1 -1 0 0 0 0 0 0 0
-0 0 0 0 0 0 1 1 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-5
-5 5 -1 1
-6 6 1 2
-5 6 -1 3
-6 7 1 4
-5 7 -1 5
+
+CV2 – Frontend (1 người)
+Vai trò chính
+Làm phần người dùng nhìn thấy và tương tác.
+Màn hình nên có
+1. Trang nhập nhu cầu lưu trú
+Form gồm:
+địa điểm
+
+
+ngày ở
+
+
+số người
+
+
+ngân sách min/max
+
+
+loại chỗ ở
+
+
+tiện nghi checkbox
+
+
+ưu tiên xếp hạng
+
+
+2. Trang kết quả gợi ý
+Mỗi card hiển thị:
+tên chỗ ở
+
+
+ảnh
+
+
+giá/đêm
+
+
+rating
+
+
+khoảng cách
+
+
+tiện nghi nổi bật
+
+
+nút “xem chi tiết”
+
+
+3. Trang chi tiết
+mô tả
+
+
+danh sách tiện nghi
+
+
+review mẫu
+
+
+map vị trí
+
+
+lý do được recommend
+
+
+4. Khung chatbot
+ô chat
+
+
+câu hỏi mẫu
+
+
+khung trả lời
+
+
+loading state
+
+
+Việc cụ thể
+Thiết kế wireframe
+
+
+Xây giao diện bằng React/Vue/HTML-CSS-JS
+
+
+Gọi API từ backend
+
+
+Hiển thị lỗi khi input sai
+
+
+Làm loading, empty state, no result state
+
+
+Deliverable
+Bộ wireframe
+
+
+Frontend chạy local
+
+
+Form nhập liệu
+
+
+Màn hình kết quả
+
+
+Trang chatbox
+
+
+Input nhận từ nhóm khác
+API contract từ Backend
+
+
+JSON mẫu trả về
+
+
+Danh sách field dữ liệu từ Database
+
+
+Điểm recommendation từ AI team
+
+
+Rủi ro hay gặp
+Backend đổi format JSON giữa chừng
+
+
+Field tên không thống nhất
+
+
+Chatbot trả lời quá dài, UI vỡ
+
+
+Kết quả null mà frontend không xử lý
+
+
+Cách tránh
+Chốt trước 1 file api_contract.md
+
+
+Chốt ví dụ response mẫu
+
+
+Dùng mock data từ sớm
+
+
+
+CV3 – Backend (3 người)
+Phần này 3 người là hợp lý nhất vì nó là trục nối toàn hệ thống.
+Mục tiêu
+Xây server + API để:
+nhận input từ frontend
+
+
+lấy dữ liệu từ database
+
+
+gọi recommendation service
+
+
+gọi chatbot service
+
+
+trả kết quả đúng format
+
+
+
+Chia 3 người trong Backend
+Backend 1 – API core
+Làm:
+dựng server
+
+
+setup project
+
+
+route/API
+
+
+validation input
+
+
+chuẩn hóa response
+
+
+API gợi ý:
+POST /recommend
+
+
+GET /accommodations
+
+
+GET /accommodations/:id
+
+
+POST /chat
+
+
+GET /health
+
+
+Output:
+server chạy được
+
+
+swagger/postman collection
+
+
+response schema thống nhất
+
+
+
+Backend 2 – Business logic
+Làm:
+xử lý lọc theo ngân sách
+
+
+lọc theo location
+
+
+lọc theo tiện nghi
+
+
+gọi service AI để chấm điểm
+
+
+sort top kết quả
+
+
+Output:
+module filter
+
+
+module ranking orchestration
+
+
+logic ghép dữ liệu trả về
+
+
+
+Backend 3 – Integration / service bridge
+Làm:
+kết nối database
+
+
+tích hợp API ngoài
+
+
+cache dữ liệu nếu cần
+
+
+log lỗi
+
+
+xử lý timeout/retry
+
+
+Output:
+database connector
+
+
+external API service
+
+
+cấu hình env
+
+
+log middleware
+
+
+
+Deliverable chung của CV3
+bộ API hoàn chỉnh
+
+
+Postman test
+
+
+tài liệu input/output
+
+
+JSON response chuẩn
+
+
+Công nghệ gợi ý
+Node.js + Express / FastAPI
+
+
+REST API
+
+
+Postman
+
+
+dotenv
+
+
+middleware validate
+
+
+Phụ thuộc mạnh vào
+Database
+
+
+AI Recommendation
+
+
+Chatbot/NLP
+
+
+API integration
+
+
+
+CV4 – Database / Data (3 người)
+Đây là phần cực quan trọng, vì recommendation hay chatbot đều chết nếu data yếu.
+Mục tiêu
+Xây CSDL dữ liệu lưu trú đủ để demo thật.
+Các bảng nên có
+1. accommodations
+id
+
+
+name
+
+
+type
+
+
+city
+
+
+address
+
+
+lat
+
+
+lng
+
+
+price_min
+
+
+price_max
+
+
+rating
+
+
+description
+
+
+2. amenities
+id
+
+
+name
+
+
+3. accommodation_amenities
+accommodation_id
+
+
+amenity_id
+
+
+4. reviews
+id
+
+
+accommodation_id
+
+
+user_name
+
+
+rating
+
+
+review_text
+
+
+review_date
+
+
+5. tags
+id
+
+
+tag_name
+
+
+6. accommodation_tags
+accommodation_id
+
+
+tag_id
+
+
+
+Chia 3 người trong DB
+DB 1 – Thiết kế schema
+Làm:
+ERD
+
+
+khóa chính, khóa ngoại
+
+
+quan hệ bảng
+
+
+data dictionary
+
+
+Output:
+sơ đồ CSDL
+
+
+script tạo bảng
+
+
+mô tả cột
+
+
+
+DB 2 – Thu thập và làm sạch dữ liệu
+Làm:
+tìm nguồn dữ liệu
+
+
+nhập dữ liệu khách sạn/homestay mẫu
+
+
+chuẩn hóa giá
+
+
+chuẩn hóa tên tiện nghi
+
+
+chuẩn hóa địa chỉ, rating
+
+
+Output:
+file CSV/Excel sạch
+
+
+dữ liệu seed
+
+
+mapping field nguồn → field DB
+
+
+
+DB 3 – Query và tối ưu dữ liệu demo
+Làm:
+viết query lọc
+
+
+index cơ bản
+
+
+query theo city, price, rating, amenity
+
+
+hỗ trợ backend lấy data nhanh
+
+
+Output:
+query mẫu
+
+
+seed data
+
+
+test query
+
+
+
+Quy mô dữ liệu demo nên làm
+Để vừa sức:
+2–3 tỉnh/thành
+
+
+mỗi nơi 20–30 chỗ ở
+ → tổng khoảng 60–90 accommodation
+
+
+mỗi chỗ có 5–10 tiện nghi
+
+
+mỗi chỗ có 3–5 review mẫu
+
+
+Mức này đủ để demo recommendation mà không quá nặng.
+Công cụ
+MySQL / PostgreSQL / SQL Server
+
+
+Excel / CSV
+
+
+DB diagram
+
+
+
+CV5 – AI Recommendation (3 người)
+Đây là phần tạo “não gợi ý” cho hệ thống.
+Mục tiêu
+Không cần làm AI quá nặng. Mục tiêu là giải thích được vì sao hệ thống gợi ý chỗ này.
+Đầu vào của recommendation
+budget
+
+
+location/city
+
+
+số người
+
+
+type
+
+
+tiện nghi yêu cầu
+
+
+ưu tiên: gần trung tâm / rẻ / rating cao / yên tĩnh
+
+
+Đầu ra
+danh sách chỗ ở có recommendation_score
+
+
+kèm lý do: “phù hợp ngân sách”, “đủ tiện nghi”, “rating cao”, “gần vị trí yêu cầu”
+
+
+
+Chia 3 người trong AI
+AI 1 – Xác định feature
+Làm:
+chọn yếu tố chấm điểm
+
+
+chuẩn hóa thang điểm
+
+
+xác định trọng số
+
+
+Ví dụ điểm tổng:
+điểm ngân sách: 30%
+
+
+điểm tiện nghi: 25%
+
+
+điểm rating: 20%
+
+
+điểm khoảng cách: 15%
+
+
+điểm loại chỗ ở phù hợp: 10%
+
+
+Output:
+bảng feature
+
+
+công thức tính điểm
+
+
+
+AI 2 – Xây thuật toán gợi ý
+Làm:
+viết scoring function
+
+
+viết logic top-k
+
+
+xử lý trường hợp thiếu dữ liệu
+
+
+test với nhiều input khác nhau
+
+
+Output:
+module recommendation
+
+
+file test case scoring
+
+
+sample result
+
+
+
+AI 3 – Đánh giá và cải tiến
+Làm:
+so sánh kết quả giữa các công thức
+
+
+kiểm tra tình huống “giá rẻ nhưng rating thấp”
+
+
+kiểm tra trường hợp không có kết quả hoàn toàn khớp
+
+
+đề xuất fallback recommendation
+
+
+Output:
+bảng đánh giá mô hình
+
+
+nhận xét mạnh/yếu
+
+
+hướng cải tiến
+
+
+
+Nên làm kiểu nào cho vừa sức
+Mình khuyên nhóm bạn làm theo 2 tầng:
+Tầng 1 – Rule-based
+Lọc:
+đúng thành phố
+
+
+đúng ngân sách
+
+
+đủ tiện nghi quan trọng
+
+
+Tầng 2 – Weighted scoring
+Chấm điểm:
+giá càng gần budget càng tốt
+
+
+rating cao hơn tốt hơn
+
+
+nhiều tiện nghi match hơn tốt hơn
+
+
+gần vị trí mong muốn hơn tốt hơn
+
+
+Cách này vừa có AI/recommendation, vừa dễ giải thích trong báo cáo.
+
+CV6 – Chatbot / NLP (3 người)
+Mục tiêu
+Làm chatbot hỗ trợ hỏi đáp liên quan đến lưu trú, ví dụ:
+“có chỗ nào dưới 800k ở Đà Lạt không?”
+
+
+“cho mình chỗ có hồ bơi và gần trung tâm”
+
+
+“homestay nào hợp gia đình 4 người?”
+
+
+“vì sao chỗ này được gợi ý?”
+
+
+Chia 3 người
+NLP 1 – Intent + entity
+Làm:
+xác định loại câu hỏi
+
+
+bóc tách thực thể từ câu người dùng
+
+
+Ví dụ intent:
+tìm nơi ở
+
+
+hỏi giá
+
+
+hỏi tiện nghi
+
+
+hỏi lý do recommend
+
+
+so sánh 2 chỗ ở
+
+
+Ví dụ entity:
+địa điểm
+
+
+ngân sách
+
+
+loại chỗ ở
+
+
+tiện nghi
+
+
+số người
+
+
+Output:
+bộ intent
+
+
+bộ entity
+
+
+rule hoặc prompt phân tích câu hỏi
+
+
+
+NLP 2 – Dialogue flow / prompt
+Làm:
+xây luồng chat
+
+
+câu trả lời mẫu
+
+
+hỏi lại khi thiếu thông tin
+
+
+Ví dụ:
+User: “tìm chỗ ở Đà Lạt”
+
+
+Bot: “Bạn muốn ngân sách khoảng bao nhiêu một đêm?”
+
+
+User: “tầm 700k”
+
+
+Bot: “Bạn ưu tiên khách sạn hay homestay?”
+
+
+Output:
+flow chat
+
+
+kịch bản hội thoại
+
+
+prompt template
+
+
+
+NLP 3 – Review analysis / mô tả ngôn ngữ
+Làm:
+phân tích review thành tag ngắn
+
+
+sinh câu giải thích recommendation
+
+
+gom review thành ý chính: sạch sẽ, gần trung tâm, yên tĩnh, phục vụ tốt
+
+
+Output:
+module tóm tắt review
+
+
+module tạo “lý do được gợi ý”
+
+
+bộ câu trả lời fallback
+
+
+
+Cách làm vừa sức
+Có 3 mức:
+Mức đơn giản nhất
+Chatbot rule-based:
+tìm keyword
+
+
+trích budget, city, tiện nghi
+
+
+gọi API backend
+
+
+Mức vừa đẹp để demo
+Hybrid:
+rule-based để bóc dữ liệu
+
+
+LLM/prompt để trả lời tự nhiên hơn
+
+
+Mức nâng cao
+Có memory ngắn trong phiên chat và biết hỏi tiếp khi thiếu dữ liệu
+Nhóm bạn nên chọn mức giữa là đẹp.
+
+

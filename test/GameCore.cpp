@@ -24,6 +24,7 @@ namespace caro {
         );
 
         game.history.clear();
+        game.winningLine.clear();
         game.moveCount = 0;
         game.xMoveCount = 0;
         game.oMoveCount = 0;
@@ -119,6 +120,13 @@ namespace caro {
         game.history.push_back(Move(pos, game.currentTurn, game.moveCount));
 
         game.result = EvaluateBoard(game, pos);
+
+        if (game.result == GameResult::XWin || game.result == GameResult::OWin) {
+            game.winningLine = FindWinningLine(game, pos, game.board[pos.row][pos.col]);
+        }
+        else {
+            game.winningLine.clear();
+        }
 
         if (game.result == GameResult::XWin) {
             ++game.xWinCount;

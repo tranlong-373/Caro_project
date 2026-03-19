@@ -158,6 +158,7 @@ namespace caro {
 
         std::vector<std::vector<CellState> > board;
         std::vector<Move> history;
+        std::vector<Position> winningLine;
 
         CellState currentTurn;
         GameResult result;
