@@ -4,6 +4,8 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <limits>
+#include <array>
 #include <conio.h>
 #include <direct.h>
 
@@ -26,17 +28,22 @@ namespace {
         RestartMatch = 1,
         BackToMainMenu = 2
     };
-
-    struct HoldKeyState {
-        bool wasDown;
-        ULONGLONG nextRepeatAt;
-
-        HoldKeyState() : wasDown(false), nextRepeatAt(0) {}
+    enum class GameplayInputAction {
+        None = 0,
+        Up,
+        Down,
+        Left,
+        Right,
+        Confirm,
+        Pause
     };
 
-    struct EdgeKeyState {
-        bool wasDown;
-        EdgeKeyState() : wasDown(false) {}
+    struct GameplayInputState {
+        std::array<bool, 256> keyDown;
+
+        GameplayInputState() {
+            keyDown.fill(false);
+        }
     };
 
     string ChooseText(Language lang, const string& vi, const string& en) {
@@ -44,7 +51,8 @@ namespace {
     }
 
     string LocalizedGameMode(GameMode mode, Language lang) {
-        return (mode == GameMode::PVP) ? "PVP" : "PVE";
+        if (mode == GameMode::PVP) return "PVP";
+        return "PVE";
     }
 
     string LocalizedDifficulty(AIDifficulty difficulty, Language lang) {
@@ -80,7 +88,7 @@ namespace {
 
     void EnsureSaveDirectory() {
         string dir = NormalizeSaveDirectory();
-        (void)_mkdir(dir.c_str());
+        _mkdir(dir.c_str());
     }
 
     string BuildSavePath(int slot) {
@@ -102,10 +110,12 @@ namespace {
 
         if (ch == 0 || ch == 224) {
             int ext = _getch();
+
             if (ext == 72) return 'W';
             if (ext == 80) return 'S';
             if (ext == 75) return 'A';
             if (ext == 77) return 'D';
+
             return -1;
         }
 
@@ -120,96 +130,116 @@ namespace {
         return (GetAsyncKeyState(vk) & 0x8000) != 0;
     }
 
-    bool IsMoveUpDown() {
-        return IsVirtualKeyDown('W') || IsVirtualKeyDown('I') || IsVirtualKeyDown(VK_UP);
-    }
-
-    bool IsMoveDownDown() {
-        return IsVirtualKeyDown('S') || IsVirtualKeyDown('K') || IsVirtualKeyDown(VK_DOWN);
-    }
-
-    bool IsMoveLeftDown() {
-        return IsVirtualKeyDown('A') || IsVirtualKeyDown('J') || IsVirtualKeyDown(VK_LEFT);
-    }
-
-    bool IsMoveRightDown() {
-        return IsVirtualKeyDown('D') || IsVirtualKeyDown('L') || IsVirtualKeyDown(VK_RIGHT);
-    }
-
     void ClearPendingConsoleInputKeys() {
+        HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+        FlushConsoleInputBuffer(in);
+
         while (_kbhit()) {
-            (void)_getch();
+            _getch();
         }
     }
 
     void WaitUntilGameplayKeysReleased() {
-        while (IsMoveUpDown() ||
-            IsMoveDownDown() ||
-            IsMoveLeftDown() ||
-            IsMoveRightDown() ||
-            IsVirtualKeyDown('P') ||
-            IsVirtualKeyDown(VK_RETURN) ||
-            IsVirtualKeyDown(VK_ESCAPE)) {
+        while (
+            IsVirtualKeyDown('W') || IsVirtualKeyDown('A') || IsVirtualKeyDown('S') || IsVirtualKeyDown('D') ||
+            IsVirtualKeyDown('I') || IsVirtualKeyDown('J') || IsVirtualKeyDown('K') || IsVirtualKeyDown('L') ||
+            IsVirtualKeyDown(VK_UP) || IsVirtualKeyDown(VK_DOWN) || IsVirtualKeyDown(VK_LEFT) || IsVirtualKeyDown(VK_RIGHT) ||
+            IsVirtualKeyDown('P') || IsVirtualKeyDown(VK_RETURN) || IsVirtualKeyDown(VK_ESCAPE)
+            ) {
             Sleep(10);
         }
     }
 
-    bool ConsumeHoldKey(
-        HoldKeyState& state,
-        bool isDown,
-        ULONGLONG now,
-        ULONGLONG firstDelayMs,
-        ULONGLONG repeatDelayMs
-    ) {
-        if (!isDown) {
-            state.wasDown = false;
-            state.nextRepeatAt = 0;
-            return false;
-        }
-
-        if (!state.wasDown) {
-            state.wasDown = true;
-            state.nextRepeatAt = now + firstDelayMs;
-            return true;
-        }
-
-        if (now >= state.nextRepeatAt) {
-            state.nextRepeatAt = now + repeatDelayMs;
-            return true;
-        }
-
-        return false;
+    void ResetGameplayInputState(GameplayInputState& state) {
+        state = GameplayInputState();
     }
 
-    bool ConsumeEdgeKey(EdgeKeyState& state, bool isDown) {
-        if (isDown && !state.wasDown) {
-            state.wasDown = true;
-            return true;
-        }
+    GameplayInputAction MapGameplayVirtualKey(WORD vk) {
+        switch (vk) {
+        case 'W':
+        case 'I':
+        case VK_UP:
+            return GameplayInputAction::Up;
 
-        if (!isDown) {
-            state.wasDown = false;
-        }
+        case 'S':
+        case 'K':
+        case VK_DOWN:
+            return GameplayInputAction::Down;
 
-        return false;
+        case 'A':
+        case 'J':
+        case VK_LEFT:
+            return GameplayInputAction::Left;
+
+        case 'D':
+        case 'L':
+        case VK_RIGHT:
+            return GameplayInputAction::Right;
+
+        case VK_RETURN:
+            return GameplayInputAction::Confirm;
+
+        case 'P':
+        case VK_ESCAPE:
+            return GameplayInputAction::Pause;
+
+        default:
+            return GameplayInputAction::None;
+        }
     }
 
-    void ResetGameplayKeyStates(
-        HoldKeyState& upKey,
-        HoldKeyState& downKey,
-        HoldKeyState& leftKey,
-        HoldKeyState& rightKey,
-        EdgeKeyState& enterKey,
-        EdgeKeyState& pauseKey,
-        EdgeKeyState& escKey
-    ) {
-        upKey = HoldKeyState();
-        downKey = HoldKeyState();
-        leftKey = HoldKeyState();
-        rightKey = HoldKeyState();
-        enterKey = EdgeKeyState();
-        pauseKey = EdgeKeyState();
-        escKey = EdgeKeyState();
+    void FlushGameplayInputBuffer() {
+        HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+        FlushConsoleInputBuffer(in);
+    }
+
+    GameplayInputAction ReadGameplayInput(GameplayInputState& state) {
+        HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+        DWORD eventCount = 0;
+
+        if (!GetNumberOfConsoleInputEvents(in, &eventCount) || eventCount == 0) {
+            return GameplayInputAction::None;
+        }
+
+        while (eventCount > 0) {
+            INPUT_RECORD record;
+            DWORD readCount = 0;
+
+            if (!ReadConsoleInput(in, &record, 1, &readCount) || readCount == 0) {
+                return GameplayInputAction::None;
+            }
+
+            if (record.EventType == KEY_EVENT) {
+                KEY_EVENT_RECORD key = record.Event.KeyEvent;
+                WORD vk = key.wVirtualKeyCode;
+                bool trackedKey = vk < state.keyDown.size();
+
+                if (!key.bKeyDown) {
+                    if (trackedKey) {
+                        state.keyDown[vk] = false;
+                    }
+                }
+                else {
+                    if (trackedKey && state.keyDown[vk]) {
+                        GetNumberOfConsoleInputEvents(in, &eventCount);
+                        continue;
+                    }
+
+                    if (trackedKey) {
+                        state.keyDown[vk] = true;
+                    }
+
+                    GameplayInputAction action = MapGameplayVirtualKey(vk);
+                    if (action != GameplayInputAction::None) {
+                        return action;
+                    }
+                }
+            }
+
+            GetNumberOfConsoleInputEvents(in, &eventCount);
+        }
+
+        return GameplayInputAction::None;
     }
 
     void ClearScreen() {
@@ -222,15 +252,18 @@ namespace {
 
         cout << title << "\n\n";
         cout << prompt;
+
         if (!defaultValue.empty()) {
             cout << " [" << defaultValue << "]";
         }
+
         cout << "\n> ";
 
         string line;
         getline(cin, line);
 
         ClearPendingConsoleInputKeys();
+
         if (line.empty()) return defaultValue;
         return line;
     }
@@ -244,6 +277,7 @@ namespace {
         cout << ChooseText(lang, "Nhan Y de dong y, phim bat ky de huy.\n", "Press Y to accept, any other key to cancel.\n");
 
         int key = ReadKeyUpper();
+
         ClearPendingConsoleInputKeys();
         return key == 'Y';
     }
@@ -291,19 +325,19 @@ namespace {
         return FindFirstEmptyCell(game);
     }
 
-    void DrawGameScreen(const GameSession& game, const Position& cursor, const string& message, const vector<Position>* highlightedCells = 0, bool blinkPhase = false) {
-        DrawGameScreenEnhanced(game, cursor, message, highlightedCells, blinkPhase);
+    void DrawGameScreen(const GameSession& game, const Position& cursor, const string& message) {
+        DrawGameScreenEnhanced(game, cursor, message);
     }
 
-    void DrawOverlayMenu(
+    void DrawGameResultScreen(
         const GameSession& game,
         const Position& cursor,
         const string& message,
-        const MenuView& overlayView,
-        const vector<Position>* highlightedCells = 0,
-        bool blinkPhase = false
+        const MenuContext& menu,
+        const vector<Position>& winningCells
     ) {
-        DrawGameMenuOverlayEnhanced(game, cursor, message, overlayView, highlightedCells, blinkPhase);
+        MenuView resultView = BuildMenuView(menu);
+        DrawGameResultScreenEnhanced(game, cursor, message, resultView, &winningCells, true);
     }
 
     string BuildAutoSaveName(const GameSession& game, int slot) {
@@ -581,37 +615,38 @@ namespace {
         PlayResultSound(game.settings, game.result);
 
         if (winningCells.empty()) {
-            DrawGameScreen(game, cursor, message);
+            DrawGameScreenEnhanced(game, cursor, message);
             SleepMs(350);
             return;
         }
 
         for (int i = 0; i < 10; ++i) {
             if (i % 2 == 0) {
-                DrawGameScreen(game, cursor, message, &winningCells, true);
+                DrawGameScreenEnhanced(game, cursor, message, &winningCells, true);
             }
             else {
-                DrawGameScreen(game, cursor, message, 0, false);
+                DrawGameScreenEnhanced(game, cursor, message, 0, false);
             }
             SleepMs(120);
         }
 
-        DrawGameScreen(game, cursor, message, &winningCells, true);
+        DrawGameScreenEnhanced(game, cursor, message, &winningCells, true);
     }
 
     InGameFlowAction RunInGameMenuLoop(
         MenuContext& menu,
         GameSession& game,
-        const Position* overlayCursor = 0,
-        const string* overlayMessage = 0,
-        const vector<Position>* overlayWinningCells = 0
+        const Position* resultCursor = 0,
+        const string* resultMessage = 0,
+        const vector<Position>* winningCells = 0
     ) {
         while (true) {
             RefreshMenuContextForCurrentGame(menu, game);
 
             MenuView view = BuildMenuView(menu);
-            if (overlayCursor != 0 && overlayMessage != 0) {
-                DrawOverlayMenu(game, *overlayCursor, *overlayMessage, view, overlayWinningCells, true);
+            if (menu.currentScreen == MenuScreen::Result &&
+                resultCursor != 0 && resultMessage != 0 && winningCells != 0) {
+                DrawGameResultScreenEnhanced(game, *resultCursor, *resultMessage, view, winningCells, true);
             }
             else {
                 DrawMenuView(view);
@@ -684,19 +719,11 @@ namespace {
         bool needsRedraw = true;
         bool resultMenuOpenedForThisMatch = false;
 
-        HoldKeyState upKey;
-        HoldKeyState downKey;
-        HoldKeyState leftKey;
-        HoldKeyState rightKey;
-        EdgeKeyState enterKey;
-        EdgeKeyState pauseKey;
-        EdgeKeyState escKey;
+        GameplayInputState inputState;
 
         SyncMenuSettingsFromGame(menu, game);
 
-        const ULONGLONG firstRepeatDelayMs = 140;
-        const ULONGLONG repeatDelayMs = 45;
-        const DWORD idleSleepMs = 8;
+        const DWORD idleSleepMs = 1;
 
         while (true) {
             if (IsBotTurn(game)) {
@@ -713,8 +740,9 @@ namespace {
 
                     ShowResultTransition(game, cursor, message);
 
-                    ResetGameplayKeyStates(upKey, downKey, leftKey, rightKey, enterKey, pauseKey, escKey);
+                    ResetGameplayInputState(inputState);
                     WaitUntilGameplayKeysReleased();
+                    FlushGameplayInputBuffer();
                     ClearPendingConsoleInputKeys();
 
                     SetMenuWinnerDisplayName(menu, GetWinnerDisplayName(game));
@@ -726,8 +754,9 @@ namespace {
                 vector<Position> winningCells = FindWinningLineCells(game);
                 InGameFlowAction action = RunInGameMenuLoop(menu, game, &cursor, &message, &winningCells);
 
-                ResetGameplayKeyStates(upKey, downKey, leftKey, rightKey, enterKey, pauseKey, escKey);
+                ResetGameplayInputState(inputState);
                 WaitUntilGameplayKeysReleased();
+                FlushGameplayInputBuffer();
                 ClearPendingConsoleInputKeys();
 
                 if (action == InGameFlowAction::RestartMatch) {
@@ -755,43 +784,40 @@ namespace {
                 needsRedraw = false;
             }
 
-            ULONGLONG now = GetTickCount64();
+            GameplayInputAction input = ReadGameplayInput(inputState);
             bool moved = false;
+            bool pausePressed = false;
 
-            if (ConsumeHoldKey(upKey, IsMoveUpDown(), now, firstRepeatDelayMs, repeatDelayMs)) {
+            switch (input) {
+            case GameplayInputAction::Up:
                 if (cursor.row > 0) {
                     cursor.row--;
                     moved = true;
                 }
-            }
+                break;
 
-            if (ConsumeHoldKey(downKey, IsMoveDownDown(), now, firstRepeatDelayMs, repeatDelayMs)) {
+            case GameplayInputAction::Down:
                 if (cursor.row + 1 < GetBoardSize(game)) {
                     cursor.row++;
                     moved = true;
                 }
-            }
+                break;
 
-            if (ConsumeHoldKey(leftKey, IsMoveLeftDown(), now, firstRepeatDelayMs, repeatDelayMs)) {
+            case GameplayInputAction::Left:
                 if (cursor.col > 0) {
                     cursor.col--;
                     moved = true;
                 }
-            }
+                break;
 
-            if (ConsumeHoldKey(rightKey, IsMoveRightDown(), now, firstRepeatDelayMs, repeatDelayMs)) {
+            case GameplayInputAction::Right:
                 if (cursor.col + 1 < GetBoardSize(game)) {
                     cursor.col++;
                     moved = true;
                 }
-            }
+                break;
 
-            if (moved) {
-                PlayMenuMoveSound(game.settings);
-                needsRedraw = true;
-            }
-
-            if (ConsumeEdgeKey(enterKey, IsVirtualKeyDown(VK_RETURN))) {
+            case GameplayInputAction::Confirm: {
                 CellState placingSymbol = game.currentTurn;
                 ActionResult result = PlaceCurrentTurn(game, cursor);
 
@@ -799,33 +825,44 @@ namespace {
                     PlayPlaceSound(game.settings, placingSymbol);
                     message = ChooseText(game.settings.language, "Dat quan thanh cong", "Placed successfully");
                     needsRedraw = true;
+
+                    ResetGameplayInputState(inputState);
+                    FlushGameplayInputBuffer();
+                    ClearPendingConsoleInputKeys();
                 }
                 else {
                     PlayInvalidSound(game.settings);
                 }
+                break;
             }
 
-            bool pausePressed = false;
+            case GameplayInputAction::Pause:
+                pausePressed = true;
+                PlayConfirmSound(game.settings);
+                break;
 
-            if (ConsumeEdgeKey(pauseKey, IsVirtualKeyDown('P'))) {
-                pausePressed = true;
+            case GameplayInputAction::None:
+            default:
+                break;
             }
-            if (ConsumeEdgeKey(escKey, IsVirtualKeyDown(VK_ESCAPE))) {
-                pausePressed = true;
+
+            if (moved) {
+                needsRedraw = true;
             }
 
             if (pausePressed) {
-                PlayConfirmSound(game.settings);
-
-                ResetGameplayKeyStates(upKey, downKey, leftKey, rightKey, enterKey, pauseKey, escKey);
+                ResetGameplayInputState(inputState);
                 WaitUntilGameplayKeysReleased();
+                FlushGameplayInputBuffer();
                 ClearPendingConsoleInputKeys();
 
                 OpenPauseMenu(menu);
-                InGameFlowAction action = RunInGameMenuLoop(menu, game, &cursor, &message, 0);
 
-                ResetGameplayKeyStates(upKey, downKey, leftKey, rightKey, enterKey, pauseKey, escKey);
+                InGameFlowAction action = RunInGameMenuLoop(menu, game);
+
+                ResetGameplayInputState(inputState);
                 WaitUntilGameplayKeysReleased();
+                FlushGameplayInputBuffer();
                 ClearPendingConsoleInputKeys();
 
                 if (action == InGameFlowAction::ContinuePlaying) {
@@ -849,7 +886,7 @@ namespace {
         }
     }
 
-} // namespace.
+} // namespace
 
 int main() {
     InitializeConsoleUI();
